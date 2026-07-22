@@ -1,0 +1,19 @@
+node_modules/
+dist/
+build/
+
+# backend local data
+backend/data/*.db*
+backend/data/uploads/*
+!backend/data/uploads/.gitkeep
+
+# env
+.env
+backend/.env
+
+# editor/os
+.DS_Store
+
+# AI workflow artifacts — local only, never commit
+docs/
+CLAUDE.md

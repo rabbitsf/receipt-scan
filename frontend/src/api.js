@@ -40,6 +40,7 @@ export async function listReceipts(filters = {}) {
   if (filters.year) params.set('year', filters.year);
   if (filters.month) params.set('month', filters.month);
   if (filters.q) params.set('q', filters.q);
+  if (filters.category) params.set('category', filters.category);
 
   const qs = params.toString();
   const res = await fetch(qs ? `${BASE}?${qs}` : BASE);
@@ -81,5 +82,11 @@ export async function bulkDeleteReceipts(ids) {
 export async function getYearSummary(year) {
   const res = await fetch(`${BASE}/summary?year=${year}`);
   if (!res.ok) throw new Error(await parseErrorResponse(res, 'Failed to load summary'));
+  return res.json();
+}
+
+export async function getCategories() {
+  const res = await fetch(`${BASE}/categories`);
+  if (!res.ok) throw new Error(await parseErrorResponse(res, 'Failed to load categories'));
   return res.json();
 }

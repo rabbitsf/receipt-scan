@@ -1,9 +1,15 @@
-import { useState } from 'react';
-import { uploadReceiptImage, extractReceiptFields } from '../api.js';
+import { useEffect, useState } from 'react';
+import { uploadReceiptImage, extractReceiptFields, getCategories } from '../api.js';
 import { emptyReceiptValues as emptyValues, toFormValues } from '../receiptFields.js';
+import { CATEGORY_OPTIONS, CUSTOM_CATEGORY_VALUE, mergeCategoryOptions } from '../categories.js';
 
 export default function ReceiptForm({ initialValues, imagePath: initialImagePath, onSubmit, submitLabel = 'Save', onCancel }) {
   const [values, setValues] = useState({ ...emptyValues, ...initialValues });
+  const [categoryOptions, setCategoryOptions] = useState(CATEGORY_OPTIONS);
+  const [categoryMode, setCategoryMode] = useState(() => {
+    const category = initialValues?.category;
+    return category && !CATEGORY_OPTIONS.includes(category) ? 'custom' : 'select';
+  });
   const [imagePath, setImagePath] = useState(initialImagePath ?? null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [extractingImage, setExtractingImage] = useState(false);
@@ -14,9 +20,35 @@ export default function ReceiptForm({ initialValues, imagePath: initialImagePath
 
   const imageUrl = imagePath ? `/api/receipts/images/${imagePath.replace(/^uploads\//, '')}` : null;
 
+  useEffect(() => {
+    getCategories()
+      .then((custom) => setCategoryOptions(mergeCategoryOptions(custom)))
+      .catch(() => {});
+  }, []);
+
+  // If the existing custom category turns out to already be a known option
+  // once the merged list loads, prefer showing it in the dropdown over the
+  // free-text box.
+  useEffect(() => {
+    if (categoryMode === 'custom' && values.category && categoryOptions.includes(values.category)) {
+      setCategoryMode('select');
+    }
+  }, [categoryOptions]);
+
   function handleChange(e) {
     const { name, value } = e.target;
     setValues((v) => ({ ...v, [name]: value }));
+  }
+
+  function handleCategorySelectChange(e) {
+    const value = e.target.value;
+    if (value === CUSTOM_CATEGORY_VALUE) {
+      setCategoryMode('custom');
+      setValues((v) => ({ ...v, category: '' }));
+    } else {
+      setCategoryMode('select');
+      setValues((v) => ({ ...v, category: value }));
+    }
   }
 
   async function handleImageSelected(e) {
@@ -44,7 +76,7 @@ export default function ReceiptForm({ initialValues, imagePath: initialImagePath
       if (extracted.length === 0) {
         setExtractNotice('No receipt details were detected in this photo — please check the fields below.');
       } else {
-        setValues(toFormValues(extracted[0]));
+        setValues((v) => ({ ...v, ...toFormValues(extracted[0]) }));
         if (extracted.length > 1) {
           setExtractNotice(
             `This photo contains ${extracted.length} receipts; the fields below were filled in from the first one. Add the others as separate receipts.`,
@@ -76,6 +108,8 @@ export default function ReceiptForm({ initialValues, imagePath: initialImagePath
         merchant: values.merchant,
         totalCost: Number(values.totalCost),
         description: values.description,
+        category: values.category || null,
+        note: values.note || null,
         imagePath: imagePath ?? null,
       });
     } catch (err) {
@@ -138,6 +172,34 @@ export default function ReceiptForm({ initialValues, imagePath: initialImagePath
       <label>
         Description
         <textarea name="description" value={values.description ?? ''} onChange={handleChange} rows={3} />
+      </label>
+
+      <label>
+        Category
+        <select
+          value={categoryMode === 'custom' ? CUSTOM_CATEGORY_VALUE : values.category || ''}
+          onChange={handleCategorySelectChange}
+        >
+          <option value="">— Select category —</option>
+          {categoryOptions.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+          <option value={CUSTOM_CATEGORY_VALUE}>Custom category…</option>
+        </select>
+      </label>
+
+      {categoryMode === 'custom' && (
+        <label>
+          Custom category
+          <input type="text" name="category" value={values.category ?? ''} onChange={handleChange} />
+        </label>
+      )}
+
+      <label>
+        Note (personal, never auto-filled)
+        <textarea name="note" value={values.note ?? ''} onChange={handleChange} rows={2} />
       </label>
 
       {error && <p className="form-error">{error}</p>}

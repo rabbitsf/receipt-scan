@@ -10,6 +10,8 @@ function getClient() {
   return client;
 }
 
+// `category` and `note` (v1.5) are intentionally excluded here — both are
+// user-set only, never guessed by OCR. Do not add them to this schema.
 const RECEIPT_FIELDS_SCHEMA = {
   type: 'object',
   properties: {

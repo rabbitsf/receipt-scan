@@ -12,6 +12,7 @@ import {
   deleteReceipt,
   getYearSummary,
   countReceiptsByImagePath,
+  getDistinctCategories,
 } from '../services/receiptsRepository.js';
 import { extractReceiptFields } from '../services/ocrService.js';
 import { generateReceiptsPdf, generateReceiptsExcel } from '../services/exportService.js';
@@ -70,6 +71,12 @@ function validateReceiptInput(body, { partial = false } = {}) {
   if (body.description !== undefined) {
     result.description = body.description === null ? null : String(body.description).trim();
   }
+  if (body.category !== undefined) {
+    result.category = body.category === null ? null : String(body.category).trim();
+  }
+  if (body.note !== undefined) {
+    result.note = body.note === null ? null : String(body.note).trim();
+  }
   if (body.imagePath !== undefined) {
     result.imagePath = body.imagePath;
   }
@@ -78,7 +85,7 @@ function validateReceiptInput(body, { partial = false } = {}) {
 }
 
 function validateFilterParams(query) {
-  const { year, month, q } = query;
+  const { year, month, q, category } = query;
   const errors = [];
 
   if (year !== undefined && !/^\d{4}$/.test(year)) {
@@ -91,13 +98,14 @@ function validateFilterParams(query) {
     }
   }
 
-  return { errors, filters: { year, month, q } };
+  return { errors, filters: { year, month, q, category } };
 }
 
 function buildExportFilename(filters, format) {
   const parts = ['receipts'];
   if (filters.year) parts.push(filters.year);
   if (filters.month) parts.push(String(filters.month).padStart(2, '0'));
+  if (filters.category) parts.push('category');
   if (filters.q) parts.push('search');
   return `${parts.join('-')}.${format}`;
 }
@@ -244,6 +252,11 @@ router.get('/summary', (req, res) => {
   res.json(getYearSummary(year));
 });
 
+// Registered before '/:id' so this fixed path isn't shadowed by the param route.
+router.get('/categories', (req, res) => {
+  res.json(getDistinctCategories());
+});
+
 router.get('/:id', (req, res) => {
   const receipt = getReceiptById(Number(req.params.id));
   if (!receipt) return res.status(404).json({ error: 'Receipt not found' });
@@ -263,6 +276,8 @@ router.put('/:id', (req, res) => {
     totalCost: result.totalCost ?? existing.totalCost,
     merchant: result.merchant !== undefined ? result.merchant : existing.merchant,
     description: result.description !== undefined ? result.description : existing.description,
+    category: result.category !== undefined ? result.category : existing.category,
+    note: result.note !== undefined ? result.note : existing.note,
     imagePath: result.imagePath !== undefined ? result.imagePath : existing.imagePath,
   };
 

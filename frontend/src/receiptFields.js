@@ -1,4 +1,4 @@
-export const emptyReceiptValues = { date: '', merchant: '', totalCost: '', description: '' };
+export const emptyReceiptValues = { date: '', merchant: '', totalCost: '', description: '', category: '', note: '' };
 
 export function toFormValues(fields) {
   return {

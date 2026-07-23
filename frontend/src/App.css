@@ -20,7 +20,7 @@
 }
 
 .app-content {
-  max-width: 800px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: 28px 20px 56px;
 }
@@ -268,9 +268,20 @@ button.secondary {
   white-space: nowrap;
 }
 
-.receipts-table .row-actions button {
-  padding: 6px 10px;
-  font-size: 13px;
+.receipts-table .note-cell,
+.receipts-table .description-cell {
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.receipts-table .row-actions .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  line-height: 0;
 }
 
 /* Dashboard */
@@ -329,6 +340,12 @@ button.secondary {
   font-variant-numeric: tabular-nums;
   font-size: 20px;
   font-weight: 600;
+}
+
+.dashboard-subheading {
+  margin-top: 24px;
+  margin-bottom: 8px;
+  font-size: 16px;
 }
 
 .dashboard-table {

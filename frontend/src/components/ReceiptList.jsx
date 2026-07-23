@@ -1,5 +1,47 @@
 import { useEffect, useState } from 'react';
-import { listReceipts, deleteReceipt, bulkDeleteReceipts } from '../api.js';
+import { listReceipts, deleteReceipt, bulkDeleteReceipts, getCategories } from '../api.js';
+import { CATEGORY_OPTIONS, mergeCategoryOptions } from '../categories.js';
+
+const ICON_PROPS = {
+  width: 16,
+  height: 16,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 2,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+};
+
+function ViewIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function EditIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+    </svg>
+  );
+}
+
+function DeleteIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+    </svg>
+  );
+}
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR - i);
@@ -25,10 +67,18 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
 
   const [year, setYear] = useState('');
   const [month, setMonth] = useState('');
+  const [category, setCategory] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [query, setQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [viewingImageUrl, setViewingImageUrl] = useState(null);
+  const [categoryOptions, setCategoryOptions] = useState(CATEGORY_OPTIONS);
+
+  useEffect(() => {
+    getCategories()
+      .then((custom) => setCategoryOptions(mergeCategoryOptions(custom)))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const handle = setTimeout(() => setQuery(searchInput.trim()), 300);
@@ -39,7 +89,7 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
     let cancelled = false;
     setLoading(true);
     setError(null);
-    listReceipts({ year, month, q: query })
+    listReceipts({ year, month, q: query, category })
       .then((data) => {
         if (!cancelled) setReceipts(data);
       })
@@ -52,12 +102,12 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
     return () => {
       cancelled = true;
     };
-  }, [year, month, query]);
+  }, [year, month, query, category]);
 
   // Filter changes invalidate the currently-loaded row set, so drop any stale selection.
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [year, month, query]);
+  }, [year, month, query, category]);
 
   async function handleDelete(id) {
     if (!window.confirm('Delete this receipt?')) return;
@@ -103,7 +153,7 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
     }
   }
 
-  const hasFilters = Boolean(year || month || query);
+  const hasFilters = Boolean(year || month || query || category);
 
   function handleExport(format) {
     const params = new URLSearchParams();
@@ -111,6 +161,7 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
     if (year) params.set('year', year);
     if (month) params.set('month', month);
     if (query) params.set('q', query);
+    if (category) params.set('category', category);
 
     const link = document.createElement('a');
     link.href = `/api/receipts/export?${params.toString()}`;
@@ -161,6 +212,18 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
             {MONTHS.map((name, i) => (
               <option key={name} value={i + 1}>
                 {name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Category
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="">All categories</option>
+            {categoryOptions.map((c) => (
+              <option key={c} value={c}>
+                {c}
               </option>
             ))}
           </select>
@@ -223,6 +286,8 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
               <th>Merchant</th>
               <th>Total</th>
               <th>Description</th>
+              <th>Category</th>
+              <th>Note</th>
               <th></th>
             </tr>
           </thead>
@@ -240,25 +305,47 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
                 <td>{r.date}</td>
                 <td>{r.merchant}</td>
                 <td className="amount">${r.totalCost.toFixed(2)}</td>
-                <td>{r.description}</td>
-                <td className="row-actions">
-                  {r.imagePath && (
+                <td className="description-cell" title={r.description || ''}>
+                  {r.description}
+                </td>
+                <td>{r.category || 'Uncategorized'}</td>
+                <td className="note-cell" title={r.note || ''}>
+                  {r.note}
+                </td>
+                <td>
+                  <div className="row-actions">
+                    {r.imagePath && (
+                      <button
+                        type="button"
+                        className="icon-button secondary"
+                        title="View Receipt"
+                        aria-label="View Receipt"
+                        onClick={() =>
+                          setViewingImageUrl(`/api/receipts/images/${r.imagePath.replace(/^uploads\//, '')}`)
+                        }
+                      >
+                        <ViewIcon />
+                      </button>
+                    )}
                     <button
                       type="button"
-                      className="secondary"
-                      onClick={() =>
-                        setViewingImageUrl(`/api/receipts/images/${r.imagePath.replace(/^uploads\//, '')}`)
-                      }
+                      className="icon-button"
+                      title="Edit"
+                      aria-label="Edit"
+                      onClick={() => onEdit(r.id)}
                     >
-                      View Receipt
+                      <EditIcon />
                     </button>
-                  )}
-                  <button type="button" onClick={() => onEdit(r.id)}>
-                    Edit
-                  </button>
-                  <button type="button" onClick={() => handleDelete(r.id)}>
-                    Delete
-                  </button>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      title="Delete"
+                      aria-label="Delete"
+                      onClick={() => handleDelete(r.id)}
+                    >
+                      <DeleteIcon />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

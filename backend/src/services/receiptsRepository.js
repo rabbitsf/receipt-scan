@@ -9,6 +9,8 @@ function rowToReceipt(row) {
     totalCost: toDollars(row.total_cost_cents),
     merchant: row.merchant,
     description: row.description,
+    category: row.category,
+    note: row.note,
     imagePath: row.image_path,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -16,8 +18,8 @@ function rowToReceipt(row) {
 }
 
 const insertStmt = db.prepare(`
-  INSERT INTO receipts (date, total_cost_cents, merchant, description, image_path)
-  VALUES (@date, @total_cost_cents, @merchant, @description, @image_path)
+  INSERT INTO receipts (date, total_cost_cents, merchant, description, category, note, image_path)
+  VALUES (@date, @total_cost_cents, @merchant, @description, @category, @note, @image_path)
 `);
 
 const selectByIdStmt = db.prepare('SELECT * FROM receipts WHERE id = ?');
@@ -28,6 +30,8 @@ const updateStmt = db.prepare(`
       total_cost_cents = @total_cost_cents,
       merchant = @merchant,
       description = @description,
+      category = @category,
+      note = @note,
       image_path = @image_path,
       updated_at = datetime('now')
   WHERE id = @id
@@ -35,7 +39,7 @@ const updateStmt = db.prepare(`
 
 const deleteStmt = db.prepare('DELETE FROM receipts WHERE id = ?');
 
-export function listReceipts({ year, month, q } = {}) {
+export function listReceipts({ year, month, q, category } = {}) {
   const conditions = [];
   const params = {};
 
@@ -55,6 +59,11 @@ export function listReceipts({ year, month, q } = {}) {
     params.q = `%${q}%`;
   }
 
+  if (category) {
+    conditions.push('category = @category');
+    params.category = category;
+  }
+
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const stmt = db.prepare(`SELECT * FROM receipts ${where} ORDER BY date DESC, id DESC`);
   return stmt.all(params).map(rowToReceipt);
@@ -71,18 +80,20 @@ export function getReceiptsByIds(ids) {
   return stmt.all(...ids).map(rowToReceipt);
 }
 
-export function createReceipt({ date, totalCost, merchant, description, imagePath }) {
+export function createReceipt({ date, totalCost, merchant, description, category, note, imagePath }) {
   const info = insertStmt.run({
     date,
     total_cost_cents: toCents(totalCost),
     merchant: merchant ?? null,
     description: description ?? null,
+    category: category ?? null,
+    note: note ?? null,
     image_path: imagePath ?? null,
   });
   return getReceiptById(info.lastInsertRowid);
 }
 
-export function updateReceipt(id, { date, totalCost, merchant, description, imagePath }) {
+export function updateReceipt(id, { date, totalCost, merchant, description, category, note, imagePath }) {
   const existing = selectByIdStmt.get(id);
   if (!existing) return null;
 
@@ -92,6 +103,8 @@ export function updateReceipt(id, { date, totalCost, merchant, description, imag
     total_cost_cents: toCents(totalCost),
     merchant: merchant ?? null,
     description: description ?? null,
+    category: category ?? null,
+    note: note ?? null,
     image_path: imagePath ?? existing.image_path,
   });
   return getReceiptById(id);
@@ -102,6 +115,13 @@ export function deleteReceipt(id) {
   if (!existing) return null;
   deleteStmt.run(id);
   return existing;
+}
+
+export function getDistinctCategories() {
+  const rows = db
+    .prepare("SELECT DISTINCT category FROM receipts WHERE category IS NOT NULL AND category != '' ORDER BY category")
+    .all();
+  return rows.map((r) => r.category);
 }
 
 export function countReceiptsByImagePath(imagePath) {
@@ -132,10 +152,23 @@ export function getYearSummary(year) {
     total: toDollars(monthlyMap.get(i + 1) ?? 0),
   }));
 
+  const categoryRows = db
+    .prepare(
+      `SELECT COALESCE(category, 'Uncategorized') AS category, SUM(total_cost_cents) AS cents
+       FROM receipts WHERE date LIKE @prefix GROUP BY category ORDER BY cents DESC`,
+    )
+    .all({ prefix: `${yearNum}-%` });
+
+  const categoryTotals = categoryRows.map((r) => ({
+    category: r.category,
+    total: toDollars(r.cents),
+  }));
+
   return {
     year: yearNum,
     yearTotal: toDollars(yearTotalRow.cents),
     monthlyTotals,
+    categoryTotals,
     priorYear: yearNum - 1,
     priorYearTotal: toDollars(priorYearTotalRow.cents),
   };

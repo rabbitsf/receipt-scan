@@ -45,6 +45,9 @@ export default function Dashboard({ onDone }) {
 
   const diff = summary ? summary.yearTotal - summary.priorYearTotal : null;
   const maxMonthTotal = summary ? Math.max(1, ...summary.monthlyTotals.map((m) => m.total)) : 1;
+  const maxCategoryTotal = summary?.categoryTotals?.length
+    ? Math.max(1, ...summary.categoryTotals.map((c) => c.total))
+    : 1;
 
   return (
     <div className="dashboard">
@@ -111,6 +114,32 @@ export default function Dashboard({ onDone }) {
               ))}
             </tbody>
           </table>
+
+          {summary.categoryTotals?.length > 0 && (
+            <>
+              <h3 className="dashboard-subheading">By category</h3>
+              <table className="dashboard-table">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th>Total</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.categoryTotals.map((c) => (
+                    <tr key={c.category}>
+                      <td>{c.category}</td>
+                      <td className="amount">${c.total.toFixed(2)}</td>
+                      <td className="bar-cell">
+                        <span className="bar" style={{ width: `${(c.total / maxCategoryTotal) * 100}%` }} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
         </>
       )}
     </div>

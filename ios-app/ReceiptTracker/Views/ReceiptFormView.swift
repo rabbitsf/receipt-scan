@@ -25,6 +25,9 @@ struct ReceiptFormView: View {
     @State private var categorySelection: String?
     @State private var isCustomCategoryMode: Bool
     @State private var customCategoryText: String
+    @State private var groupSelection: String?
+    @State private var isCustomGroupMode: Bool
+    @State private var customGroupText: String
     @State private var note: String
 
     @State private var showingPhotoSourceDialog = false
@@ -88,6 +91,37 @@ struct ReceiptFormView: View {
         return categorySelection
     }
 
+    private var availableGroups: [String] {
+        GroupOptions.availableGroups(from: allReceipts)
+    }
+
+    /// Bridges the Group picker's selection to
+    /// `groupSelection`/`isCustomGroupMode`, same shape as
+    /// `categoryPickerBinding`.
+    private var groupPickerBinding: Binding<String?> {
+        Binding(
+            get: { isCustomGroupMode ? GroupOptions.customSentinel : groupSelection },
+            set: { newValue in
+                if newValue == GroupOptions.customSentinel {
+                    isCustomGroupMode = true
+                    customGroupText = ""
+                } else {
+                    isCustomGroupMode = false
+                    groupSelection = newValue
+                }
+            }
+        )
+    }
+
+    /// Resolved group value to persist, mirroring `resolvedCategory`.
+    private var resolvedGroup: String? {
+        if isCustomGroupMode {
+            let trimmed = customGroupText.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        return groupSelection
+    }
+
     private static let ocrDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
@@ -118,6 +152,17 @@ struct ReceiptFormView: View {
         _isCustomCategoryMode = State(initialValue: existingCategory != nil && !isKnownPredefined)
         _categorySelection = State(initialValue: isKnownPredefined ? existingCategory : nil)
         _customCategoryText = State(initialValue: isKnownPredefined ? "" : (existingCategory ?? ""))
+
+        // Group has no predefined list to check synchronously against
+        // (unlike Category above), so an existing group always starts in
+        // custom mode with its value pre-filled — correct regardless of
+        // `@Query`-backed `availableGroups` not being ready yet at init
+        // time, and simpler than Category's predefined-membership check
+        // since there's nothing to check membership against.
+        let existingGroup = existingReceipt?.group
+        _isCustomGroupMode = State(initialValue: existingGroup != nil)
+        _groupSelection = State(initialValue: nil)
+        _customGroupText = State(initialValue: existingGroup ?? "")
     }
 
     var body: some View {
@@ -132,6 +177,8 @@ struct ReceiptFormView: View {
                                 .resizable()
                                 .scaledToFit()
                                 .frame(maxHeight: 240)
+                                .frame(maxWidth: .infinity)
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("viewFullImageButton")
@@ -140,7 +187,7 @@ struct ReceiptFormView: View {
                     Button {
                         showingPhotoSourceDialog = true
                     } label: {
-                        Text(imageData == nil ? "Attach a photo (optional)" : "Replace photo")
+                        Label(imageData == nil ? "Attach a photo (optional)" : "Replace photo", systemImage: "camera.fill")
                     }
                     .accessibilityIdentifier("attachPhotoButton")
                     .disabled(isExtracting)
@@ -186,6 +233,22 @@ struct ReceiptFormView: View {
                     if isCustomCategoryMode {
                         TextField("Custom category", text: $customCategoryText)
                             .accessibilityIdentifier("customCategoryField")
+                    }
+                }
+
+                Section {
+                    Picker("Group", selection: groupPickerBinding) {
+                        Text("— No group —").tag(String?.none)
+                        ForEach(availableGroups, id: \.self) { group in
+                            Text(group).tag(String?.some(group))
+                        }
+                        Text("New group…").tag(String?.some(GroupOptions.customSentinel))
+                    }
+                    .accessibilityIdentifier("groupPicker")
+
+                    if isCustomGroupMode {
+                        TextField("Group name", text: $customGroupText)
+                            .accessibilityIdentifier("customGroupField")
                     }
                 }
 
@@ -315,6 +378,9 @@ struct ReceiptFormView: View {
         categorySelection = nil
         isCustomCategoryMode = false
         customCategoryText = ""
+        groupSelection = nil
+        isCustomGroupMode = false
+        customGroupText = ""
         note = ""
         errorMessage = nil
     }
@@ -335,6 +401,7 @@ struct ReceiptFormView: View {
             existingReceipt.itemDescription = trimmedDescription
             existingReceipt.imageData = imageData
             existingReceipt.category = resolvedCategory
+            existingReceipt.group = resolvedGroup
             existingReceipt.note = noteToSave
             existingReceipt.updatedAt = Date()
         } else {
@@ -344,6 +411,7 @@ struct ReceiptFormView: View {
                 merchant: merchant,
                 itemDescription: trimmedDescription,
                 category: resolvedCategory,
+                group: resolvedGroup,
                 note: noteToSave,
                 imageData: imageData
             )

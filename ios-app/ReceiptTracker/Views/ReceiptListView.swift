@@ -16,6 +16,7 @@ struct ReceiptListView: View {
     @State private var selectedYear: Int?
     @State private var selectedMonth: Int?
     @State private var selectedCategory: String?
+    @State private var selectedGroup: String?
 
     // Manual multi-select, mirroring `ReceiptList.jsx`'s own approach
     // (plain checkboxes + a Set of selected ids) rather than SwiftUI's
@@ -32,7 +33,7 @@ struct ReceiptListView: View {
     @State private var exportedCSV: ExportedCSV?
 
     private var hasActiveFilters: Bool {
-        selectedYear != nil || selectedMonth != nil || selectedCategory != nil || !searchText.isEmpty
+        selectedYear != nil || selectedMonth != nil || selectedCategory != nil || selectedGroup != nil || !searchText.isEmpty
     }
 
     private var filteredReceipts: [Receipt] {
@@ -41,12 +42,17 @@ struct ReceiptListView: View {
             year: selectedYear,
             month: selectedMonth,
             category: selectedCategory,
+            group: selectedGroup,
             searchText: searchText
         )
     }
 
     private var availableCategories: [String] {
         CategoryOptions.mergeWithInUseCategories(receipts.compactMap(\.category))
+    }
+
+    private var availableGroups: [String] {
+        GroupOptions.availableGroups(from: receipts)
     }
 
     /// True only when every currently-visible (filtered) receipt is
@@ -56,56 +62,182 @@ struct ReceiptListView: View {
         !filteredReceipts.isEmpty && filteredReceipts.allSatisfy { selection.contains($0.persistentModelID) }
     }
 
-    var body: some View {
-        NavigationStack {
-            Group {
-                if filteredReceipts.isEmpty {
-                    ContentUnavailableView(
-                        hasActiveFilters ? "No receipts match the current filters" : "No receipts yet",
-                        systemImage: "receipt"
-                    )
-                } else {
-                    List {
-                        ForEach(filteredReceipts) { receipt in
-                            HStack {
-                                if isSelecting {
-                                    Image(systemName: selection.contains(receipt.persistentModelID) ? "checkmark.circle.fill" : "circle")
-                                        .foregroundStyle(selection.contains(receipt.persistentModelID) ? Color.accentColor : .secondary)
-                                        .accessibilityIdentifier(selection.contains(receipt.persistentModelID) ? "selectionMarkSelected" : "selectionMarkUnselected")
-                                }
-                                ReceiptRow(receipt: receipt)
-                            }
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                if isSelecting {
-                                    toggleSelection(receipt.persistentModelID)
-                                } else {
-                                    editingReceipt = receipt
-                                }
-                            }
-                            .accessibilityIdentifier("receiptRow")
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    deleteOne(receipt)
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                                if receipt.imageData != nil {
-                                    Button {
-                                        viewingReceipt = receipt
-                                    } label: {
-                                        Label("View Receipt", systemImage: "photo")
-                                    }
-                                    .tint(.blue)
-                                    .accessibilityIdentifier("viewReceiptButton")
-                                }
-                            }
-                        }
+    /// Sum of every receipt (unfiltered by the current search/filter
+    /// state — this is a fixed "at a glance" indicator, not scoped to
+    /// whatever the list below happens to be showing) dated in the
+    /// current calendar month.
+    private var thisMonthTotal: Double {
+        let calendar = Calendar.current
+        let now = Date()
+        return receipts
+            .filter { calendar.isDate($0.date, equalTo: now, toGranularity: .month) }
+            .reduce(0) { $0 + $1.totalCost }
+    }
+
+    /// One entry per elapsed day of the current month (1...today), summed
+    /// from all receipts — feeds the summary card's sparkline.
+    private var dailyTotalsThisMonth: [Double] {
+        let calendar = Calendar.current
+        let now = Date()
+        let currentDay = calendar.component(.day, from: now)
+        guard currentDay >= 1 else { return [] }
+        var totals = [Double](repeating: 0, count: currentDay)
+        for receipt in receipts where calendar.isDate(receipt.date, equalTo: now, toGranularity: .month) {
+            let day = calendar.component(.day, from: receipt.date)
+            if day >= 1 && day <= currentDay {
+                totals[day - 1] += receipt.totalCost
+            }
+        }
+        return totals
+    }
+
+    /// Per-category totals across ALL receipts (not the current filter
+    /// scope), for the quick-filter chip row — categoryless receipts are
+    /// excluded since there's no way to express "filter for no category"
+    /// through `ReceiptFilter.apply`'s exact-match `category` param, and
+    /// the mockup this was ported from doesn't show an uncategorized chip
+    /// either.
+    private var categoryTotals: [(category: String, total: Double, count: Int)] {
+        var totals: [String: (total: Double, count: Int)] = [:]
+        for receipt in receipts {
+            guard let category = receipt.category, !category.isEmpty else { continue }
+            totals[category, default: (0, 0)].total += receipt.totalCost
+            totals[category, default: (0, 0)].count += 1
+        }
+        return totals
+            .map { (category: $0.key, total: $0.value.total, count: $0.value.count) }
+            .sorted { $0.total > $1.total }
+    }
+
+    private var monthSummaryCard: some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("This Month")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Text(thisMonthTotal, format: .currency(code: "USD"))
+                    .font(.title2.bold())
+                    .foregroundStyle(Color.accentColor)
+            }
+            Spacer()
+            let dailyTotals = dailyTotalsThisMonth
+            if !dailyTotals.isEmpty {
+                let maxTotal = max(dailyTotals.max() ?? 1, 1)
+                HStack(alignment: .bottom, spacing: 3) {
+                    ForEach(Array(dailyTotals.enumerated()), id: \.offset) { _, total in
+                        Capsule()
+                            .fill(Color.accentColor.opacity(total > 0 ? 0.8 : 0.25))
+                            .frame(width: 4, height: max(4, 36 * (total / maxTotal)))
                     }
-                    .listStyle(.plain)
+                }
+                .frame(height: 36)
+                .accessibilityHidden(true)
+            }
+        }
+        .padding(16)
+        .background(Theme.summaryCardBackground, in: RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("This month, \(thisMonthTotal.formatted(.currency(code: "USD")))")
+    }
+
+    private var categoryChipRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                CategoryChip(
+                    icon: "square.grid.2x2.fill",
+                    color: .accentColor,
+                    title: "All",
+                    subtitle: "\(receipts.count)",
+                    isSelected: selectedCategory == nil,
+                    action: { selectedCategory = nil }
+                )
+                .accessibilityIdentifier("categoryChipAll")
+
+                ForEach(categoryTotals, id: \.category) { entry in
+                    CategoryChip(
+                        icon: CategoryOptions.icon(for: entry.category),
+                        color: CategoryOptions.color(for: entry.category),
+                        title: entry.category,
+                        subtitle: entry.total.formatted(.currency(code: "USD")),
+                        isSelected: selectedCategory == entry.category,
+                        action: {
+                            selectedCategory = (selectedCategory == entry.category) ? nil : entry.category
+                        }
+                    )
+                    .accessibilityIdentifier("categoryChip_\(entry.category)")
                 }
             }
-            .navigationTitle("Receipt Tracker")
+            .padding(.horizontal, 16)
+        }
+    }
+
+    @ViewBuilder
+    private var receiptListContent: some View {
+        if filteredReceipts.isEmpty {
+            ContentUnavailableView(
+                hasActiveFilters ? "No receipts match the current filters" : "No receipts yet",
+                systemImage: "receipt"
+            )
+        } else {
+            List {
+                ForEach(filteredReceipts) { receipt in
+                    HStack {
+                        if isSelecting {
+                            Image(systemName: selection.contains(receipt.persistentModelID) ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(selection.contains(receipt.persistentModelID) ? Color.accentColor : .secondary)
+                                .accessibilityIdentifier(selection.contains(receipt.persistentModelID) ? "selectionMarkSelected" : "selectionMarkUnselected")
+                        }
+                        ReceiptRow(receipt: receipt)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if isSelecting {
+                            toggleSelection(receipt.persistentModelID)
+                        } else {
+                            editingReceipt = receipt
+                        }
+                    }
+                    .accessibilityIdentifier("receiptRow")
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            deleteOne(receipt)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        if receipt.imageData != nil {
+                            Button {
+                                viewingReceipt = receipt
+                            } label: {
+                                Label("View Receipt", systemImage: "photo")
+                            }
+                            .tint(.blue)
+                            .accessibilityIdentifier("viewReceiptButton")
+                        }
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                if !receipts.isEmpty {
+                    monthSummaryCard
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                    categoryChipRow
+                        .padding(.vertical, 8)
+                }
+                receiptListContent
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle(isSelecting && !selection.isEmpty ? "\(selection.count) Selected" : "Receipt Tracker")
             .searchable(text: $searchText, prompt: "Merchant, description, or amount")
             .toolbar {
                 ToolbarItem(placement: .navigation) {
@@ -166,13 +298,30 @@ struct ReceiptListView: View {
                     // earlier version of this did) made SwiftUI lay them
                     // out as independent, left-packed toolbar segments:
                     // each `Spacer()` only had effect within its own
-                    // segment, so the "N selected" text (with nothing after
-                    // it to push against) ended up squeezed to zero width
-                    // and never appeared, and the whole row read as
-                    // left-aligned instead of spread across the bar —
-                    // exactly what the user's screenshot showed. A single
-                    // HStack fixes both: the Spacers now compete for the
-                    // same row's width as intended.
+                    // segment, so the whole row read as left-aligned
+                    // instead of spread across the bar — exactly what the
+                    // user's screenshot showed. A single HStack fixes that:
+                    // the Spacer competes for the same row's width as
+                    // intended.
+                    //
+                    // The selection COUNT used to live here too, as a
+                    // `Text("\(selection.count) selected")` between two
+                    // Spacers. That was fragile in two different ways: (1)
+                    // with the old, longer "Delete Selected"/"Export
+                    // Selected" labels, it got silently squeezed to zero
+                    // width and vanished entirely (fixed once by shortening
+                    // the labels + `.layoutPriority(1)`); (2) even after
+                    // that fix, it disappeared again for odd selection
+                    // counts of 3+ specifically (reported by the user,
+                    // reproducible: shows for 1/2/4/6, not for 3/5) — a
+                    // second, different failure mode in the exact same
+                    // crowded HStack, cause not fully understood (not
+                    // explained by text width, which is identical for any
+                    // single-digit count). Rather than patch this same spot
+                    // a third time, the count now lives in the navigation
+                    // title instead ("N Selected"), which has dedicated,
+                    // uncontested space and isn't competing with Select
+                    // All/Delete/Export for room in a single toolbar row.
                     if isSelecting {
                         HStack {
                             Button(isAllFilteredSelected ? "Deselect All" : "Select All") {
@@ -180,21 +329,9 @@ struct ReceiptListView: View {
                             }
                             .accessibilityIdentifier("selectAllButton")
 
+                            Spacer()
+
                             if !selection.isEmpty {
-                                Spacer()
-                                // Fitting "Deselect All" + count + both action
-                                // buttons on one bottom-bar row is tight —
-                                // with the full "Delete Selected"/"Export
-                                // Selected" labels, this Text got squeezed
-                                // out of the layout entirely (confirmed via
-                                // screenshot: buttons stayed, the count text
-                                // silently vanished, no truncation/ellipsis,
-                                // just gone). Shortened the two action labels
-                                // and gave this Text priority so it's never
-                                // the one sacrificed if space is tight again.
-                                Text("\(selection.count) selected")
-                                    .layoutPriority(1)
-                                Spacer()
                                 Button("Delete", role: .destructive) {
                                     deleteSelected()
                                 }
@@ -203,8 +340,6 @@ struct ReceiptListView: View {
                                     exportCSV(filteredReceipts.filter { selection.contains($0.persistentModelID) })
                                 }
                                 .accessibilityIdentifier("bulkExportButton")
-                            } else {
-                                Spacer()
                             }
                         }
                     }
@@ -214,7 +349,13 @@ struct ReceiptListView: View {
                         showingAddReceipt = true
                     } label: {
                         Label("Add Receipt", systemImage: "plus")
+                            .labelStyle(.iconOnly)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .background(Color.accentColor, in: Circle())
                     }
+                    .buttonStyle(.plain)
                     .accessibilityIdentifier("addReceiptButton")
                 }
             }
@@ -232,7 +373,9 @@ struct ReceiptListView: View {
                     selectedYear: $selectedYear,
                     selectedMonth: $selectedMonth,
                     selectedCategory: $selectedCategory,
-                    availableCategories: availableCategories
+                    availableCategories: availableCategories,
+                    selectedGroup: $selectedGroup,
+                    availableGroups: availableGroups
                 )
             }
             .sheet(isPresented: $showingDashboard) {
@@ -293,45 +436,133 @@ struct ReceiptListView: View {
     }
 }
 
+private struct CategoryChip: View {
+    let icon: String
+    let color: Color
+    let title: String
+    let subtitle: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(color.opacity(0.18))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: icon)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(color)
+                }
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.chipCornerRadius)
+                    .fill(isSelected ? color.opacity(0.18) : Color(.secondarySystemGroupedBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.chipCornerRadius)
+                    .stroke(isSelected ? color : Color.clear, lineWidth: 1.5)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 private struct ReceiptRow: View {
     let receipt: Receipt
 
     private static let dateStyle: Date.FormatStyle = .dateTime.year().month(.twoDigits).day(.twoDigits)
 
+    private var categoryColor: Color { CategoryOptions.color(for: receipt.category) }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(receipt.merchant?.isEmpty == false ? receipt.merchant! : "Unknown merchant")
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                Spacer()
-                Text(receipt.totalCost, format: .currency(code: "USD"))
-                    .font(.headline.monospacedDigit())
-                    .foregroundStyle(.primary)
-            }
-            HStack {
-                Text(receipt.date, format: Self.dateStyle)
-                if let category = receipt.category, !category.isEmpty {
-                    Text("· \(category)")
+        HStack(spacing: 0) {
+            categoryColor
+                .frame(width: 4)
+
+            HStack(alignment: .top, spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(categoryColor)
+                        .frame(width: 40, height: 40)
+                    Image(systemName: CategoryOptions.icon(for: receipt.category))
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(receipt.merchant?.isEmpty == false ? receipt.merchant! : "Unknown merchant")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Text(receipt.totalCost, format: .currency(code: "USD"))
+                            .font(.headline.monospacedDigit())
+                            .foregroundStyle(.primary)
+                    }
+                    HStack(spacing: 4) {
+                        Text(receipt.date, format: Self.dateStyle)
+                            .foregroundStyle(.secondary)
+                        if let category = receipt.category, !category.isEmpty {
+                            Text("·")
+                                .foregroundStyle(.secondary)
+                            Text(category)
+                                .foregroundStyle(categoryColor)
+                        }
+                    }
+                    .font(.subheadline)
+                    if let description = receipt.itemDescription, !description.isEmpty {
+                        Text(description)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    HStack(spacing: 6) {
+                        if let group = receipt.group, !group.isEmpty {
+                            HStack(spacing: 3) {
+                                Image(systemName: GroupOptions.icon(for: group))
+                                Text(group)
+                            }
+                            .font(.caption)
+                            .foregroundStyle(GroupOptions.color(for: group))
+                            .lineLimit(1)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(GroupOptions.color(for: group).opacity(0.16), in: Capsule())
+                        }
+                        if let note = receipt.note, !note.isEmpty {
+                            Text(note)
+                                .font(.caption)
+                                .foregroundStyle(Theme.notePillForeground)
+                                .lineLimit(1)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Theme.notePillBackground, in: Capsule())
+                        }
+                    }
                 }
             }
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            if let description = receipt.itemDescription, !description.isEmpty {
-                Text(description)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            if let note = receipt.note, !note.isEmpty {
-                Text(note)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .italic()
-                    .lineLimit(1)
-            }
+            .padding(12)
         }
-        .padding(.vertical, 2)
+        .background(.background)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        )
+        .shadow(color: Theme.cardShadowColor, radius: Theme.cardShadowRadius, y: Theme.cardShadowY)
     }
 }
 

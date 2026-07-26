@@ -17,3 +17,7 @@ backend/.env
 # AI workflow artifacts — local only, never commit
 docs/
 CLAUDE.md
+.claude/
+
+# stale/superseded, not referenced by any build
+ios-app/ReceiptTracker/Assets.xcassets/AppIcon.appiconset.bak/

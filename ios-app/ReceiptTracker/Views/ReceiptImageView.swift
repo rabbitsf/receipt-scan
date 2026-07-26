@@ -16,18 +16,94 @@ struct ReceiptImageView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var saveStatusMessage: String?
 
+    // Pinch-to-zoom + pan. A plain ScrollView (the previous implementation)
+    // never responds to a pinch gesture on its own — it only scrolls
+    // content that's already larger than the viewport. Zoom has to be
+    // implemented explicitly via MagnificationGesture driving a
+    // `.scaleEffect`, with a DragGesture for panning once zoomed in.
+    @State private var scale: CGFloat = 1
+    @State private var lastScale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+
+    private let minScale: CGFloat = 1
+    private let maxScale: CGFloat = 5
+
     var body: some View {
         NavigationStack {
-            ScrollView([.horizontal, .vertical]) {
-                if let uiImage = UIImage(data: imageData) {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: .infinity)
-                        .accessibilityIdentifier("receiptFullImage")
+            GeometryReader { geometry in
+                ZStack {
+                    // Explicit background fill, not a `.background()`
+                    // modifier on the GeometryReader — keeps the black
+                    // fill guaranteed to cover the full viewport regardless
+                    // of how the image content inside sizes itself.
+                    Color.black
+
+                    if let uiImage = UIImage(data: imageData) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .scaledToFit()
+                            // An EXACT frame (not maxWidth/maxHeight, which
+                            // only cap growth without forcing it) is what
+                            // actually makes a resizable+scaledToFit image
+                            // fill the available space — using max-only
+                            // constraints here previously left the image
+                            // rendering at an effectively invisible size
+                            // (confirmed via screenshot: totally blank,
+                            // not even the black background showing).
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .scaleEffect(scale)
+                            .offset(offset)
+                            .contentShape(Rectangle())
+                            .accessibilityIdentifier("receiptFullImage")
+                            .gesture(
+                                MagnificationGesture()
+                                    .onChanged { value in
+                                        scale = min(max(lastScale * value, minScale), maxScale)
+                                    }
+                                    .onEnded { _ in
+                                        lastScale = scale
+                                        if scale == minScale {
+                                            offset = .zero
+                                            lastOffset = .zero
+                                        } else {
+                                            offset = clampedOffset(offset, in: geometry.size)
+                                            lastOffset = offset
+                                        }
+                                    }
+                            )
+                            .simultaneousGesture(
+                                DragGesture()
+                                    .onChanged { value in
+                                        guard scale > minScale else { return }
+                                        offset = CGSize(
+                                            width: lastOffset.width + value.translation.width,
+                                            height: lastOffset.height + value.translation.height
+                                        )
+                                    }
+                                    .onEnded { _ in
+                                        guard scale > minScale else { return }
+                                        offset = clampedOffset(offset, in: geometry.size)
+                                        lastOffset = offset
+                                    }
+                            )
+                            .onTapGesture(count: 2) {
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    if scale > minScale {
+                                        scale = minScale
+                                        offset = .zero
+                                    } else {
+                                        scale = 2.5
+                                        offset = .zero
+                                    }
+                                    lastScale = scale
+                                    lastOffset = offset
+                                }
+                            }
+                    }
                 }
             }
-            .background(Color.black)
+            .ignoresSafeArea(edges: .bottom)
             .navigationTitle("Receipt Photo")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -57,6 +133,18 @@ struct ReceiptImageView: View {
                 }
             }
         }
+    }
+
+    /// Keeps the panned image from being dragged entirely off-screen —
+    /// clamps to how far the scaled image actually overhangs the viewport
+    /// on each axis (zero overhang once back at `minScale`).
+    private func clampedOffset(_ proposed: CGSize, in viewportSize: CGSize) -> CGSize {
+        let maxX = max(0, (viewportSize.width * (scale - 1)) / 2)
+        let maxY = max(0, (viewportSize.height * (scale - 1)) / 2)
+        return CGSize(
+            width: min(max(proposed.width, -maxX), maxX),
+            height: min(max(proposed.height, -maxY), maxY)
+        )
     }
 
     private func saveToPhotos() {

@@ -31,6 +31,10 @@ struct DashboardView: View {
         max(1, summary.categoryTotals.map(\.total).max() ?? 1)
     }
 
+    private var maxGroupTotal: Double {
+        max(1, summary.groupTotals.map(\.total).max() ?? 1)
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -44,8 +48,10 @@ struct DashboardView: View {
                 }
 
                 Section {
-                    statRow(label: "\(summary.year) total", value: summary.yearTotal)
+                    statRow(label: "\(summary.year) total", value: summary.yearTotal, highlighted: true)
+                        .listRowBackground(Theme.summaryCardBackground)
                     statRow(label: "\(summary.priorYear) total", value: summary.priorYearTotal)
+                        .listRowBackground(Theme.summaryCardBackground)
                     HStack {
                         Text("Change vs \(summary.priorYear)")
                         Spacer()
@@ -53,6 +59,7 @@ struct DashboardView: View {
                             .foregroundStyle(change >= 0 ? .green : .red)
                             .font(.callout.monospacedDigit())
                     }
+                    .listRowBackground(Theme.summaryCardBackground)
                 }
 
                 Section("Monthly Breakdown") {
@@ -71,7 +78,21 @@ struct DashboardView: View {
                             barRow(
                                 label: categoryTotal.category,
                                 total: categoryTotal.total,
-                                maxTotal: maxCategoryTotal
+                                maxTotal: maxCategoryTotal,
+                                barColor: CategoryOptions.color(for: categoryTotal.category)
+                            )
+                        }
+                    }
+                }
+
+                if !summary.groupTotals.isEmpty {
+                    Section("By Group") {
+                        ForEach(summary.groupTotals) { groupTotal in
+                            barRow(
+                                label: groupTotal.group,
+                                total: groupTotal.total,
+                                maxTotal: maxGroupTotal,
+                                barColor: GroupOptions.color(for: groupTotal.group)
                             )
                         }
                     }
@@ -86,16 +107,19 @@ struct DashboardView: View {
         }
     }
 
-    private func statRow(label: String, value: Double) -> some View {
+    private func statRow(label: String, value: Double, highlighted: Bool = false) -> some View {
         HStack {
             Text(label)
+                .font(highlighted ? .subheadline : .body)
+                .foregroundStyle(highlighted ? .secondary : .primary)
             Spacer()
             Text(value, format: .currency(code: "USD"))
-                .font(.callout.monospacedDigit())
+                .font(highlighted ? .title3.bold().monospacedDigit() : .callout.monospacedDigit())
+                .foregroundStyle(highlighted ? Color.accentColor : .primary)
         }
     }
 
-    private func barRow(label: String, total: Double, maxTotal: Double) -> some View {
+    private func barRow(label: String, total: Double, maxTotal: Double, barColor: Color = .accentColor) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(label)
@@ -106,7 +130,7 @@ struct DashboardView: View {
             }
             GeometryReader { geometry in
                 Capsule()
-                    .fill(Color.accentColor)
+                    .fill(barColor)
                     .frame(width: max(2, geometry.size.width * (total / maxTotal)), height: 6)
             }
             .frame(height: 6)

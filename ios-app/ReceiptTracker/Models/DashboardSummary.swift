@@ -12,6 +12,12 @@ struct CategoryTotal: Identifiable, Equatable {
     var id: String { category }
 }
 
+struct GroupTotal: Identifiable, Equatable {
+    let group: String
+    let total: Double
+    var id: String { group }
+}
+
 struct YearSummary {
     let year: Int
     let yearTotal: Double
@@ -19,6 +25,7 @@ struct YearSummary {
     let priorYearTotal: Double
     let monthlyTotals: [MonthTotal]
     let categoryTotals: [CategoryTotal]
+    let groupTotals: [GroupTotal]
 }
 
 /// Ported from `backend/src/services/receiptsRepository.js:getYearSummary` —
@@ -54,13 +61,28 @@ enum DashboardSummary {
             .map { CategoryTotal(category: $0.key, total: $0.value) }
             .sorted { $0.total > $1.total }
 
+        // Unlike category, an ungrouped receipt is the common case (Group
+        // is an occasional, ad-hoc tag, not something every receipt is
+        // expected to have) — so there's no "Ungrouped" catch-all bucket
+        // here; receipts with no group are simply excluded from this
+        // breakdown entirely rather than dominating it.
+        var groupSums: [String: Double] = [:]
+        for receipt in yearReceipts {
+            guard let group = receipt.group, !group.isEmpty else { continue }
+            groupSums[group, default: 0] += receipt.totalCost
+        }
+        let groupTotals = groupSums
+            .map { GroupTotal(group: $0.key, total: $0.value) }
+            .sorted { $0.total > $1.total }
+
         return YearSummary(
             year: year,
             yearTotal: yearTotal,
             priorYear: priorYear,
             priorYearTotal: priorYearTotal,
             monthlyTotals: monthlyTotals,
-            categoryTotals: categoryTotals
+            categoryTotals: categoryTotals,
+            groupTotals: groupTotals
         )
     }
 }

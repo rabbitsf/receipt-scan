@@ -97,8 +97,7 @@ final class BulkSelectExportFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts[secondName].waitForExistence(timeout: 5))
 
         app.buttons["filterButton"].tap()
-        app.buttons["categoryFilterPicker"].tap()
-        app.buttons[category].tap()
+        selectCategoryFilter(app, category: category)
         app.buttons["Done"].tap()
 
         XCTAssertTrue(app.staticTexts[firstName].waitForExistence(timeout: 5))
@@ -114,21 +113,81 @@ final class BulkSelectExportFlowTests: XCTestCase {
         XCTAssertEqual(selectAllButton.label, "Select All")
         selectAllButton.tap()
 
-        // "N selected" (driven by `selection.count`) is the reliable signal
-        // that both rows actually got selected — SF Symbol `Image`s with an
-        // `.accessibilityIdentifier` inside this row's `HStack` don't
+        // The selection count shows in the navigation title ("N Selected"),
+        // not as a bottom-bar Text — that spot proved fragile twice
+        // (squeezed to zero width with longer button labels, then vanished
+        // again for odd counts of 3+ even after that fix — see
+        // ReceiptListView.swift's comment on this). SF Symbol `Image`s with
+        // an `.accessibilityIdentifier` inside this row's `HStack` don't
         // reliably surface as individually queryable `app.images` elements
-        // in XCUITest (queried 0 matches even with the count text correctly
-        // showing "2 selected"), so don't assert on that image identifier
-        // here; the count text plus the button label toggling below is
+        // in XCUITest either, so don't assert on that image identifier
+        // here; the nav title plus the button label toggling below is
         // sufficient proof the feature works.
-        XCTAssertTrue(app.staticTexts["2 selected"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["2 Selected"].waitForExistence(timeout: 5))
         XCTAssertEqual(selectAllButton.label, "Deselect All")
 
         selectAllButton.tap()
 
-        XCTAssertFalse(app.staticTexts["2 selected"].exists)
+        XCTAssertFalse(app.navigationBars["2 Selected"].exists)
+        XCTAssertTrue(app.navigationBars["Receipt Tracker"].waitForExistence(timeout: 5))
         XCTAssertEqual(selectAllButton.label, "Select All")
+    }
+
+    /// Regression test for a real bug: the bottom-bar selection count used
+    /// to disappear specifically for odd counts of 3+ (reported by the
+    /// user: showed for 1/2/4/6, silently missing for 3/5) while tapping
+    /// rows one at a time. Selects three individual rows via direct taps
+    /// (not Select All, matching the user's actual workflow) and confirms
+    /// "3 Selected" shows as the navigation title — the count's new home
+    /// after being moved out of the crowded bottom-bar HStack entirely.
+    func testSelectingThreeReceiptsShowsCorrectCount() throws {
+        let app = XCUIApplication()
+        app.terminate()
+        app.launch()
+
+        let runID = String(UUID().uuidString.prefix(8))
+        let category = "OddCountCat\(runID)"
+        let names = (1...3).map { "OddCountTest \($0) \(runID)" }
+        for (index, name) in names.enumerated() {
+            addReceiptWithCategory(app, merchant: name, totalCost: "\(index + 1).00", category: category)
+        }
+
+        for name in names {
+            XCTAssertTrue(app.staticTexts[name].waitForExistence(timeout: 10))
+        }
+
+        app.buttons["filterButton"].tap()
+        selectCategoryFilter(app, category: category)
+        app.buttons["Done"].tap()
+
+        for name in names {
+            XCTAssertTrue(app.staticTexts[name].waitForExistence(timeout: 5))
+        }
+
+        app.buttons["selectButton"].tap()
+        for name in names {
+            app.staticTexts[name].firstMatch.tap()
+        }
+
+        XCTAssertTrue(app.navigationBars["3 Selected"].waitForExistence(timeout: 5))
+    }
+
+    /// Same fragility class as "Custom category…" in the add-form's
+    /// `categoryPicker` (see its comment below): this session's on-device
+    /// store has accumulated many custom categories across repeated test
+    /// runs, which can push a specific category out of immediate reach in
+    /// `categoryFilterPicker`'s popup menu too — swipe up a few times
+    /// before giving up. Previously unpatched here (only the add-form
+    /// picker had this fix), which caused this exact failure in a full
+    /// 56-test suite run once enough categories had accumulated.
+    private func selectCategoryFilter(_ app: XCUIApplication, category: String) {
+        app.buttons["categoryFilterPicker"].tap()
+        let categoryOption = app.buttons[category]
+        for _ in 0..<5 where !categoryOption.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(categoryOption.waitForExistence(timeout: 5))
+        categoryOption.tap()
     }
 
     private func addReceiptWithCategory(_ app: XCUIApplication, merchant: String, totalCost: String, category: String) {

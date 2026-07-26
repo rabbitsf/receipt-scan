@@ -24,6 +24,7 @@ enum ReceiptFilter {
         year: Int? = nil,
         month: Int? = nil,
         category: String? = nil,
+        group: String? = nil,
         searchText: String = "",
         calendar: Calendar = .current
     ) -> [Receipt] {
@@ -37,6 +38,9 @@ enum ReceiptFilter {
                 return false
             }
             if let category, receipt.category != category {
+                return false
+            }
+            if let group, receipt.group != group {
                 return false
             }
             if !trimmedSearch.isEmpty {

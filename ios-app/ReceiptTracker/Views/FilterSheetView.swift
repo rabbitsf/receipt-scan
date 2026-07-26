@@ -5,6 +5,8 @@ struct FilterSheetView: View {
     @Binding var selectedMonth: Int?
     @Binding var selectedCategory: String?
     let availableCategories: [String]
+    @Binding var selectedGroup: String?
+    let availableGroups: [String]
 
     @Environment(\.dismiss) private var dismiss
 
@@ -35,11 +37,20 @@ struct FilterSheetView: View {
                 }
                 .accessibilityIdentifier("categoryFilterPicker")
 
-                if selectedYear != nil || selectedMonth != nil || selectedCategory != nil {
+                Picker("Group", selection: $selectedGroup) {
+                    Text("All groups").tag(String?.none)
+                    ForEach(availableGroups, id: \.self) { group in
+                        Text(group).tag(String?.some(group))
+                    }
+                }
+                .accessibilityIdentifier("groupFilterPicker")
+
+                if selectedYear != nil || selectedMonth != nil || selectedCategory != nil || selectedGroup != nil {
                     Button("Clear Filters", role: .destructive) {
                         selectedYear = nil
                         selectedMonth = nil
                         selectedCategory = nil
+                        selectedGroup = nil
                     }
                     .accessibilityIdentifier("clearFiltersButton")
                 }
@@ -55,5 +66,5 @@ struct FilterSheetView: View {
 }
 
 #Preview {
-    FilterSheetView(selectedYear: .constant(nil), selectedMonth: .constant(nil), selectedCategory: .constant(nil), availableCategories: [])
+    FilterSheetView(selectedYear: .constant(nil), selectedMonth: .constant(nil), selectedCategory: .constant(nil), availableCategories: [], selectedGroup: .constant(nil), availableGroups: [])
 }

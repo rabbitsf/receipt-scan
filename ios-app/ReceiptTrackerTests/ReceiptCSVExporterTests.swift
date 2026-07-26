@@ -16,7 +16,7 @@ final class ReceiptCSVExporterTests: XCTestCase {
 
     func testEmptyReceiptsProducesHeaderOnly() {
         let csv = ReceiptCSVExporter.csv(for: [])
-        XCTAssertEqual(csv, "Date,Merchant,Total,Description,Category,Note")
+        XCTAssertEqual(csv, "Date,Merchant,Total,Description,Category,Group,Note")
     }
 
     func testSingleReceiptProducesCorrectRow() {
@@ -26,12 +26,13 @@ final class ReceiptCSVExporterTests: XCTestCase {
             merchant: "Panera Bread",
             itemDescription: "Bagels",
             category: "Travel",
+            group: "Business Trip to NY",
             note: "Reimbursable"
         )
         let csv = ReceiptCSVExporter.csv(for: [receipt])
         let lines = csv.components(separatedBy: "\r\n")
         XCTAssertEqual(lines.count, 2)
-        XCTAssertEqual(lines[1], "2026-07-23,Panera Bread,34.62,Bagels,Travel,Reimbursable")
+        XCTAssertEqual(lines[1], "2026-07-23,Panera Bread,34.62,Bagels,Travel,Business Trip to NY,Reimbursable")
     }
 
     func testNilCategoryFallsBackToUncategorized() {
@@ -44,7 +45,7 @@ final class ReceiptCSVExporterTests: XCTestCase {
         let receipt = Receipt(date: date(2026, 1, 1), totalCost: 1.00)
         let csv = ReceiptCSVExporter.csv(for: [receipt])
         let lines = csv.components(separatedBy: "\r\n")
-        XCTAssertEqual(lines[1], "2026-01-01,,1.00,,Uncategorized,")
+        XCTAssertEqual(lines[1], "2026-01-01,,1.00,,Uncategorized,,")
     }
 
     func testFieldContainingCommaGetsQuoted() {

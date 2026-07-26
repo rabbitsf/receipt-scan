@@ -4,8 +4,10 @@ import Foundation
 /// (`backend/src/services/exportService.js`) — this standalone app has no
 /// backend to run `pdfkit`/`exceljs` on, so CSV (needs no library, shares
 /// via the system share sheet like any file) covers the same need for now.
-/// Same 6 columns as the web export: Date, Merchant, Total, Description,
-/// Category, Note.
+/// Same 6 columns as the web export plus one iOS-only addition: Date,
+/// Merchant, Total, Description, Category, Group, Note. `Group` has no web
+/// app equivalent (see `GroupOptions`) — empty (not "Ungrouped") for
+/// receipts with no group, since most receipts are expected to have none.
 enum ReceiptCSVExporter {
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -17,7 +19,7 @@ enum ReceiptCSVExporter {
     }()
 
     static func csv(for receipts: [Receipt]) -> String {
-        var lines = ["Date,Merchant,Total,Description,Category,Note"]
+        var lines = ["Date,Merchant,Total,Description,Category,Group,Note"]
         for receipt in receipts {
             let fields = [
                 dateFormatter.string(from: receipt.date),
@@ -25,6 +27,7 @@ enum ReceiptCSVExporter {
                 String(format: "%.2f", receipt.totalCost),
                 receipt.itemDescription ?? "",
                 receipt.category ?? "Uncategorized",
+                receipt.group ?? "",
                 receipt.note ?? "",
             ]
             lines.append(fields.map(escapeCSVField).joined(separator: ","))

@@ -1,10 +1,45 @@
 import SwiftUI
+import SwiftData
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Query private var receipts: [Receipt]
+    @Query(sort: \CustomCategory.name) private var customCategories: [CustomCategory]
+    @Query(sort: \CustomGroup.name) private var customGroups: [CustomGroup]
+
     @State private var apiKey: String = APIKeyStore.load() ?? ""
     @State private var hasStoredKey: Bool = APIKeyStore.load() != nil
     @State private var statusMessage: String?
+
+    @State private var newCategoryName = ""
+    @State private var renamingCategory: String?
+    @State private var renameCategoryText = ""
+
+    @State private var newGroupName = ""
+    @State private var renamingGroup: String?
+    @State private var renameGroupText = ""
+
+    @State private var deleteBlockedMessage: String?
+
+    /// Every non-predefined category currently known — Settings-created
+    /// (`customCategories`) or already in use on a receipt via the form's
+    /// "Custom category…" field. Same merge `CategoryOptions` already uses
+    /// elsewhere, `predefined` dropped since those get their own read-only
+    /// rows above this list.
+    private var customCategoryNames: [String] {
+        Array(
+            CategoryOptions.mergeWithInUseCategories(
+                receipts.compactMap(\.category),
+                customCategories: customCategories.map(\.name)
+            )
+            .dropFirst(CategoryOptions.predefined.count)
+        )
+    }
+
+    private var groupNames: [String] {
+        GroupOptions.availableGroups(from: receipts, customGroups: customGroups.map(\.name))
+    }
 
     var body: some View {
         NavigationStack {
@@ -35,6 +70,51 @@ struct SettingsView: View {
                     }
                     .accessibilityIdentifier("removeAPIKeyButton")
                 }
+
+                Section {
+                    ForEach(CategoryOptions.predefined, id: \.self) { category in
+                        categoryLabel(category)
+                    }
+                    ForEach(customCategoryNames, id: \.self) { category in
+                        categoryRow(category)
+                    }
+                    HStack {
+                        TextField("New category", text: $newCategoryName)
+                            .accessibilityIdentifier("newCategoryNameField")
+                        Button("Add") { addCategory() }
+                            .disabled(newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .accessibilityIdentifier("addCategoryButton")
+                    }
+                } header: {
+                    Text("Categories")
+                } footer: {
+                    Text("The 8 built-in categories can't be renamed or removed. Categories added here — or typed as \"Custom category…\" on a receipt — show up in the category picker right away.")
+                }
+
+                Section {
+                    ForEach(groupNames, id: \.self) { group in
+                        groupRow(group)
+                    }
+                    HStack {
+                        TextField("New group", text: $newGroupName)
+                            .accessibilityIdentifier("newGroupNameField")
+                        Button("Add") { addGroup() }
+                            .disabled(newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .accessibilityIdentifier("addGroupButton")
+                    }
+                } header: {
+                    Text("Groups")
+                } footer: {
+                    Text("Groups added here — or typed as \"New group…\" on a receipt — show up in the group picker right away.")
+                }
+            }
+            .alert("Can't Delete", isPresented: Binding(
+                get: { deleteBlockedMessage != nil },
+                set: { isPresented in if !isPresented { deleteBlockedMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(deleteBlockedMessage ?? "")
             }
             .navigationTitle("Settings")
             .toolbar {
@@ -57,8 +137,163 @@ struct SettingsView: View {
             }
         }
     }
+
+    @ViewBuilder
+    private func categoryLabel(_ category: String) -> some View {
+        Label {
+            Text(category)
+        } icon: {
+            Image(systemName: CategoryOptions.icon(for: category))
+                .foregroundStyle(CategoryOptions.color(for: category))
+        }
+    }
+
+    @ViewBuilder
+    private func categoryRow(_ category: String) -> some View {
+        if renamingCategory == category {
+            HStack {
+                TextField(category, text: $renameCategoryText)
+                    .accessibilityIdentifier("renameCategoryField")
+                Button("Save") { commitRenameCategory(from: category) }
+                    .accessibilityIdentifier("saveRenameCategoryButton")
+                Button("Cancel", role: .cancel) { renamingCategory = nil }
+            }
+        } else {
+            HStack {
+                categoryLabel(category)
+                Spacer()
+            }
+            // `Label`'s own icon+text accessibility merge reports only the
+            // icon's small frame once `.swipeActions` is attached (observed
+            // via XCUITest: a `.swipeLeft()` on that frame lands too close
+            // to the row's leading edge and gets misread as a system
+            // edge-swipe, dismissing the whole Settings sheet instead of
+            // revealing the actions). Explicitly combining into ONE element
+            // over this full-width `HStack` (via the `Spacer()`) fixes the
+            // reported frame to the whole row.
+            .contentShape(Rectangle())
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("categoryRow_\(category)")
+            .swipeActions(edge: .trailing) {
+                Button("Delete", role: .destructive) { requestDeleteCategory(category) }
+                    .accessibilityIdentifier("deleteCategoryButton_\(category)")
+                Button("Rename") {
+                    renamingCategory = category
+                    renameCategoryText = ""
+                }
+                .tint(.blue)
+                .accessibilityIdentifier("renameCategoryButton_\(category)")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func groupRow(_ group: String) -> some View {
+        if renamingGroup == group {
+            HStack {
+                TextField(group, text: $renameGroupText)
+                    .accessibilityIdentifier("renameGroupField")
+                Button("Save") { commitRenameGroup(from: group) }
+                    .accessibilityIdentifier("saveRenameGroupButton")
+                Button("Cancel", role: .cancel) { renamingGroup = nil }
+            }
+        } else {
+            HStack {
+                Label {
+                    Text(group)
+                } icon: {
+                    Image(systemName: GroupOptions.icon(for: group))
+                        .foregroundStyle(GroupOptions.color(for: group))
+                }
+                Spacer()
+            }
+            // See `categoryRow`'s comment on the same pattern.
+            .contentShape(Rectangle())
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("groupRow_\(group)")
+            .swipeActions(edge: .trailing) {
+                Button("Delete", role: .destructive) { requestDeleteGroup(group) }
+                    .accessibilityIdentifier("deleteGroupButton_\(group)")
+                Button("Rename") {
+                    renamingGroup = group
+                    renameGroupText = ""
+                }
+                .tint(.blue)
+                .accessibilityIdentifier("renameGroupButton_\(group)")
+            }
+        }
+    }
+
+    private func addCategory() {
+        let trimmed = newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
+        defer { newCategoryName = "" }
+        guard !trimmed.isEmpty, !CategoryOptions.predefined.contains(trimmed), !customCategoryNames.contains(trimmed) else {
+            return
+        }
+        modelContext.insert(CustomCategory(name: trimmed))
+        try? modelContext.save()
+    }
+
+    private func requestDeleteCategory(_ category: String) {
+        let count = CategoryOptions.usageCount(of: category, in: receipts)
+        guard count == 0 else {
+            deleteBlockedMessage = "\"\(category)\" is used by \(count) receipt\(count == 1 ? "" : "s") and can't be deleted. Change or clear that field on those receipts first."
+            return
+        }
+        if let existing = customCategories.first(where: { $0.name == category }) {
+            modelContext.delete(existing)
+            try? modelContext.save()
+        }
+    }
+
+    private func commitRenameCategory(from oldName: String) {
+        defer { renamingCategory = nil }
+        let trimmed = renameCategoryText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != oldName, !CategoryOptions.predefined.contains(trimmed) else { return }
+        CategoryOptions.renameInUse(from: oldName, to: trimmed, in: receipts)
+        if let existing = customCategories.first(where: { $0.name == oldName }) {
+            existing.name = trimmed
+        } else {
+            modelContext.insert(CustomCategory(name: trimmed))
+        }
+        try? modelContext.save()
+    }
+
+    private func addGroup() {
+        let trimmed = newGroupName.trimmingCharacters(in: .whitespacesAndNewlines)
+        defer { newGroupName = "" }
+        guard !trimmed.isEmpty, !groupNames.contains(trimmed) else { return }
+        modelContext.insert(CustomGroup(name: trimmed))
+        try? modelContext.save()
+    }
+
+    private func requestDeleteGroup(_ group: String) {
+        let count = GroupOptions.usageCount(of: group, in: receipts)
+        guard count == 0 else {
+            deleteBlockedMessage = "\"\(group)\" is used by \(count) receipt\(count == 1 ? "" : "s") and can't be deleted. Change or clear that field on those receipts first."
+            return
+        }
+        if let existing = customGroups.first(where: { $0.name == group }) {
+            modelContext.delete(existing)
+            try? modelContext.save()
+        }
+    }
+
+    private func commitRenameGroup(from oldName: String) {
+        defer { renamingGroup = nil }
+        let trimmed = renameGroupText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != oldName else { return }
+        GroupOptions.renameInUse(from: oldName, to: trimmed, in: receipts)
+        if let existing = customGroups.first(where: { $0.name == oldName }) {
+            existing.name = trimmed
+        } else {
+            modelContext.insert(CustomGroup(name: trimmed))
+        }
+        try? modelContext.save()
+    }
 }
 
 #Preview {
     SettingsView()
+        .modelContainer(for: [Receipt.self, CustomCategory.self, CustomGroup.self], inMemory: true)
 }

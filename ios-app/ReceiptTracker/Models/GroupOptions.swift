@@ -13,9 +13,29 @@ enum GroupOptions {
 
     /// Distinct non-empty group values currently in use, sorted
     /// alphabetically. Unlike `CategoryOptions.mergeWithInUseCategories`,
-    /// there's no predefined seed list to merge against.
-    static func availableGroups(from receipts: [Receipt]) -> [String] {
-        Set(receipts.compactMap(\.group).filter { !$0.isEmpty }).sorted()
+    /// there's no predefined seed list to merge against. `customGroups`
+    /// (default empty) adds Settings-created groups that don't have any
+    /// receipt using them yet — see `CustomGroup`.
+    static func availableGroups(from receipts: [Receipt], customGroups: [String] = []) -> [String] {
+        let inUse = receipts.compactMap(\.group).filter { !$0.isEmpty }
+        return Set(inUse).union(customGroups.filter { !$0.isEmpty }).sorted()
+    }
+
+    /// Number of receipts currently using this exact group — Settings uses
+    /// this to block deleting a group that's still in use.
+    static func usageCount(of group: String, in receipts: [Receipt]) -> Int {
+        receipts.filter { $0.group == group }.count
+    }
+
+    /// Renames `group` to `newName` on every matching receipt in place
+    /// (mutates the passed-in `Receipt` objects; the caller is responsible
+    /// for saving the model context afterward). Mirrors
+    /// `CategoryOptions.renameInUse(from:to:in:)`.
+    static func renameInUse(from oldName: String, to newName: String, in receipts: [Receipt]) {
+        for receipt in receipts where receipt.group == oldName {
+            receipt.group = newName
+            receipt.updatedAt = Date()
+        }
     }
 
     /// Every group is equally arbitrary/user-invented — no predefined

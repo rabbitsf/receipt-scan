@@ -26,10 +26,29 @@ enum CategoryOptions {
     /// Predefined categories first (stable order), then any custom
     /// categories already in use — appended alphabetically, deduplicated
     /// against the predefined set. Mirrors
-    /// `frontend/src/categories.js:mergeCategoryOptions()`.
-    static func mergeWithInUseCategories(_ inUseCategories: [String]) -> [String] {
-        let extras = Set(inUseCategories).subtracting(predefined).sorted()
+    /// `frontend/src/categories.js:mergeCategoryOptions()`. `customCategories`
+    /// (default empty) adds Settings-created categories that don't have any
+    /// receipt using them yet — see `CustomCategory`.
+    static func mergeWithInUseCategories(_ inUseCategories: [String], customCategories: [String] = []) -> [String] {
+        let extras = Set(inUseCategories).union(customCategories).subtracting(predefined).sorted()
         return predefined + extras
+    }
+
+    /// Number of receipts currently using this exact category — Settings
+    /// uses this to block deleting a category that's still in use.
+    static func usageCount(of category: String, in receipts: [Receipt]) -> Int {
+        receipts.filter { $0.category == category }.count
+    }
+
+    /// Renames `category` to `newName` on every matching receipt in place
+    /// (mutates the passed-in `Receipt` objects; the caller is responsible
+    /// for saving the model context afterward). Single canonical place for
+    /// this cascade so Settings' rename flow doesn't reimplement it inline.
+    static func renameInUse(from oldName: String, to newName: String, in receipts: [Receipt]) {
+        for receipt in receipts where receipt.category == oldName {
+            receipt.category = newName
+            receipt.updatedAt = Date()
+        }
     }
 
     /// One fixed, distinct color per predefined category (by index, so it

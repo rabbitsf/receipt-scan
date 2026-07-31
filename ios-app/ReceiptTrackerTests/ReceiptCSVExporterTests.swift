@@ -7,7 +7,14 @@ final class ReceiptCSVExporterTests: XCTestCase {
     override func setUp() {
         super.setUp()
         calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
+        // Local time zone, not UTC — matches `ReceiptCSVExporter.dateFormatter`
+        // now that it formats in local time (fixing a real bug: it used to
+        // format in UTC while every other date in the app was already
+        // local, silently shifting exported dates for users east of UTC).
+        // Constructing test dates with the SAME time zone the exporter now
+        // uses keeps this test deterministic regardless of which time zone
+        // the machine running it is actually in.
+        calendar.timeZone = TimeZone.current
     }
 
     private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {

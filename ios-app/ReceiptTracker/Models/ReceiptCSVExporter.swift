@@ -9,11 +9,16 @@ import Foundation
 /// app equivalent (see `GroupOptions`) — empty (not "Ungrouped") for
 /// receipts with no group, since most receipts are expected to have none.
 enum ReceiptCSVExporter {
+    /// Local time zone, not UTC — `receipt.date` values are set from
+    /// `DatePicker`/`ocrDateFormatter` (see `ReceiptFormView.swift`), both
+    /// of which already treat a `Date` as a local wall-clock calendar day.
+    /// Formatting via UTC here would silently shift the exported date by a
+    /// day for any user whose local time zone is ahead of UTC.
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.timeZone = TimeZone.current
         formatter.locale = Locale(identifier: "en_US_POSIX")
         return formatter
     }()

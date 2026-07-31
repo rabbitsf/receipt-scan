@@ -14,6 +14,8 @@ struct ReceiptFormView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Query private var allReceipts: [Receipt]
+    @Query(sort: \CustomCategory.name) private var customCategories: [CustomCategory]
+    @Query(sort: \CustomGroup.name) private var customGroups: [CustomGroup]
 
     @State private var date: Date
     @State private var merchant: String
@@ -34,6 +36,9 @@ struct ReceiptFormView: View {
     @State private var showingCamera = false
     @State private var showingLibraryPicker = false
     @State private var photoPickerItem: PhotosPickerItem?
+    @State private var showingDocumentPicker = false
+    @State private var showingPDFWarning = false
+    @State private var pendingPDFURL: URL?
     @State private var isExtracting = false
     @State private var extractNotice: String?
     @State private var showingFullImage = false
@@ -61,7 +66,10 @@ struct ReceiptFormView: View {
     }
 
     private var availableCategories: [String] {
-        CategoryOptions.mergeWithInUseCategories(allReceipts.compactMap(\.category))
+        CategoryOptions.mergeWithInUseCategories(
+            allReceipts.compactMap(\.category),
+            customCategories: customCategories.map(\.name)
+        )
     }
 
     /// Bridges the Picker's selection (which includes the transient
@@ -92,7 +100,7 @@ struct ReceiptFormView: View {
     }
 
     private var availableGroups: [String] {
-        GroupOptions.availableGroups(from: allReceipts)
+        GroupOptions.availableGroups(from: allReceipts, customGroups: customGroups.map(\.name))
     }
 
     /// Bridges the Group picker's selection to
@@ -122,11 +130,20 @@ struct ReceiptFormView: View {
         return groupSelection
     }
 
+    /// Local time zone, not UTC — parsing "2026-07-23" as UTC midnight,
+    /// then handing that `Date` to `DatePicker`/list-row formatting (both
+    /// of which render in the LOCAL time zone), silently shifted the
+    /// displayed date back by a day for anyone west of UTC (bug report:
+    /// scanned receipt dates showing one day behind). Parsing as local
+    /// midnight instead keeps every stage of this app's date handling
+    /// consistent — `DatePicker`, list/dashboard display, and
+    /// `ReceiptFilter`/`DashboardSummary`'s `Calendar.current` defaults
+    /// already all assume local time.
     private static let ocrDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.timeZone = TimeZone.current
         formatter.locale = Locale(identifier: "en_US_POSIX")
         return formatter
     }()
@@ -285,7 +302,24 @@ struct ReceiptFormView: View {
                 // dialog's own dismissal animation conflicts with the
                 // picker trying to present at the same time.
                 Button("Choose from Library") { showingLibraryPicker = true }
+                Button("Import PDF") { showingDocumentPicker = true }
                 Button("Cancel", role: .cancel) {}
+            }
+            .sheet(isPresented: $showingDocumentPicker) {
+                PDFDocumentPickerView(
+                    onPick: { url in
+                        showingDocumentPicker = false
+                        pendingPDFURL = url
+                        showingPDFWarning = true
+                    },
+                    onCancel: { showingDocumentPicker = false }
+                )
+            }
+            .alert("Scan This PDF?", isPresented: $showingPDFWarning) {
+                Button("Cancel", role: .cancel) { pendingPDFURL = nil }
+                Button("Continue") { processPendingPDF() }
+            } message: {
+                Text("Up to \(PDFPageRenderer.maxPages) pages will be scanned together as one import. If they contain more than one receipt, you'll review each one before saving.")
             }
             .fullScreenCover(isPresented: $showingCamera) {
                 CameraCaptureView(
@@ -318,7 +352,29 @@ struct ReceiptFormView: View {
     private func handlePickedImage(_ image: UIImage) {
         guard let jpegData = image.jpegData(compressionQuality: 0.8) else { return }
         imageData = jpegData
-        Task { await scanReceipt(jpegData) }
+        Task { await scanReceipt(images: [jpegData]) }
+    }
+
+    /// Renders every page of the imported PDF (up to `PDFPageRenderer.maxPages`)
+    /// and sends them all to OCR together — the model decides whether they're
+    /// one receipt spanning multiple pages or several separate receipts (see
+    /// `AnthropicVisionClient.extractReceipts`'s doc comment). Only the FIRST
+    /// page becomes the receipt's stored/displayed photo — this app has no
+    /// concept of multiple photos per receipt, and every already-queued
+    /// receipt from one photo already shares that one photo today (see
+    /// `advanceToNextInQueue`, which never resets `imageData`), so this isn't
+    /// a new inconsistency.
+    private func processPendingPDF() {
+        guard let url = pendingPDFURL else { return }
+        pendingPDFURL = nil
+        let pages = PDFPageRenderer.renderPages(of: url)
+        guard let firstPage = pages.first, let firstJPEG = firstPage.jpegData(compressionQuality: 0.8) else {
+            extractNotice = "Couldn't read that PDF — please check the fields below."
+            return
+        }
+        imageData = firstJPEG
+        let allJPEGs = pages.compactMap { $0.jpegData(compressionQuality: 0.8) }
+        Task { await scanReceipt(images: allJPEGs) }
     }
 
     /// Attaching or replacing a photo always re-runs OCR and overwrites
@@ -328,13 +384,15 @@ struct ReceiptFormView: View {
     /// no merge/confirm prompt). Does not touch `imageData` itself (already
     /// set by the caller) or anything outside these four fields.
     ///
-    /// In create mode, a photo with N > 1 detected receipts starts a review
-    /// queue (`reviewQueue`/`reviewIndex`) instead of silently discarding
+    /// In create mode, N > 1 detected receipts (whether from one photo with
+    /// multiple receipts in frame, or a multi-page PDF the model decided
+    /// contains separate receipts) starts a review queue
+    /// (`reviewQueue`/`reviewIndex`) instead of silently discarding
     /// receipts 2..N — see `save()`/`advanceToNextInQueue()`. In edit mode
     /// the queue is never populated (`isReviewingQueue` is gated on
     /// `existingReceipt == nil`), matching the web app where the queue only
     /// exists in the separate upload flow, never in edit.
-    private func scanReceipt(_ jpegData: Data) async {
+    private func scanReceipt(images: [Data]) async {
         isExtracting = true
         extractNotice = nil
         errorMessage = nil
@@ -343,9 +401,9 @@ struct ReceiptFormView: View {
         defer { isExtracting = false }
 
         do {
-            let receipts = try await AnthropicVisionClient.extractReceipts(imageData: jpegData, mediaType: "image/jpeg")
+            let receipts = try await AnthropicVisionClient.extractReceipts(images: images, mediaType: "image/jpeg")
             guard let first = receipts.first else {
-                extractNotice = "No receipt details were detected in this photo — please check the fields below."
+                extractNotice = "No receipt details were detected — please check the fields below."
                 return
             }
             applyExtractedReceipt(first)
@@ -359,12 +417,17 @@ struct ReceiptFormView: View {
     }
 
     private func applyExtractedReceipt(_ extracted: ExtractedReceipt) {
-        if let parsedDate = Self.ocrDateFormatter.date(from: extracted.date) {
+        if let parsedDate = Self.parseOCRDate(extracted.date) {
             date = parsedDate
         }
         merchant = extracted.merchant
         totalCost = String(extracted.totalCost)
         description = extracted.description
+    }
+
+    /// Exposed for unit testing without needing a `ReceiptFormView` instance.
+    static func parseOCRDate(_ string: String) -> Date? {
+        ocrDateFormatter.date(from: string)
     }
 
     /// Saves the current item, then moves to the next detected receipt in

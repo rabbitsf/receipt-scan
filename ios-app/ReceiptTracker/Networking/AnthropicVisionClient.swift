@@ -51,7 +51,19 @@ enum AnthropicVisionClient {
     This photo may contain one or more separate, distinct receipts. Identify EACH separate receipt in the image and extract its date, merchant name, total cost, and a brief description of the item(s) purchased as its own entry. Do not merge multiple receipts into one entry. If there is only one receipt, return a single entry. Give your best reasonable guess for any field that is not perfectly clear.
     """
 
-    static func extractReceipts(imageData: Data, mediaType: String, session: URLSession = .shared) async throws -> [ExtractedReceipt] {
+    /// `images` may hold more than one image — e.g. every rendered page of
+    /// an imported multi-page PDF — sent together in one request so the
+    /// model can reason across all of them at once. The response schema
+    /// already returns an *array* of receipts regardless of image count,
+    /// so this naturally covers both "these pages are one receipt" (array
+    /// of length 1) and "these pages are actually separate receipts, e.g.
+    /// a scanned stack" (array of length >1, which flows into the same
+    /// review-queue mechanism a multi-receipt photo already uses) — no
+    /// separate code path needed for either case.
+    static func extractReceipts(images: [Data], mediaType: String, session: URLSession = .shared) async throws -> [ExtractedReceipt] {
+        guard !images.isEmpty else {
+            throw OCRError.invalidResponse
+        }
         guard let apiKey = APIKeyStore.load(), !apiKey.isEmpty else {
             throw OCRError.missingAPIKey
         }
@@ -61,15 +73,21 @@ enum AnthropicVisionClient {
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue(anthropicVersion, forHTTPHeaderField: "anthropic-version")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody(imageData: imageData, mediaType: mediaType))
+        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody(images: images, mediaType: mediaType))
 
         let (data, response) = try await session.data(for: request)
         return try parseReceipts(from: data, response: response)
     }
 
     /// Exposed for unit testing without hitting the network.
-    static func requestBody(imageData: Data, mediaType: String) -> [String: Any] {
-        [
+    static func requestBody(images: [Data], mediaType: String) -> [String: Any] {
+        let imageBlocks: [[String: Any]] = images.map { imageData in
+            [
+                "type": "image",
+                "source": ["type": "base64", "media_type": mediaType, "data": imageData.base64EncodedString()],
+            ]
+        }
+        return [
             "model": model,
             "max_tokens": 4096,
             "output_config": [
@@ -80,13 +98,7 @@ enum AnthropicVisionClient {
             ],
             "messages": [[
                 "role": "user",
-                "content": [
-                    [
-                        "type": "image",
-                        "source": ["type": "base64", "media_type": mediaType, "data": imageData.base64EncodedString()],
-                    ],
-                    ["type": "text", "text": extractionPrompt],
-                ],
+                "content": imageBlocks + [["type": "text", "text": extractionPrompt]],
             ]],
         ]
     }

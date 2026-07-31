@@ -10,7 +10,7 @@ final class AnthropicVisionClientTests: XCTestCase {
     // MARK: - Request shape (must match backend/src/services/ocrService.js exactly)
 
     func testRequestBodyMatchesBackendShape() throws {
-        let body = AnthropicVisionClient.requestBody(imageData: Data("fake-image".utf8), mediaType: "image/jpeg")
+        let body = AnthropicVisionClient.requestBody(images: [Data("fake-image".utf8)], mediaType: "image/jpeg")
 
         XCTAssertEqual(body["model"] as? String, "claude-opus-4-8")
         XCTAssertEqual(body["max_tokens"] as? Int, 4096)
@@ -43,6 +43,25 @@ final class AnthropicVisionClientTests: XCTestCase {
         XCTAssertEqual(source["data"] as? String, Data("fake-image".utf8).base64EncodedString())
         XCTAssertEqual(content[1]["type"] as? String, "text")
         XCTAssertFalse((content[1]["text"] as? String ?? "").isEmpty)
+    }
+
+    /// Multi-page PDF import sends every rendered page as its own image
+    /// block, all in the same request — one image block per page, in
+    /// order, followed by exactly one trailing text block.
+    func testRequestBodyWithMultipleImagesIncludesOneBlockPerImage() throws {
+        let images = [Data("page-1".utf8), Data("page-2".utf8), Data("page-3".utf8)]
+        let body = AnthropicVisionClient.requestBody(images: images, mediaType: "image/jpeg")
+
+        let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+        let content = try XCTUnwrap(messages[0]["content"] as? [[String: Any]])
+        XCTAssertEqual(content.count, 4)
+
+        for (index, imageData) in images.enumerated() {
+            XCTAssertEqual(content[index]["type"] as? String, "image")
+            let source = try XCTUnwrap(content[index]["source"] as? [String: Any])
+            XCTAssertEqual(source["data"] as? String, imageData.base64EncodedString())
+        }
+        XCTAssertEqual(content[3]["type"] as? String, "text")
     }
 
     // MARK: - Response parsing
@@ -104,9 +123,18 @@ final class AnthropicVisionClientTests: XCTestCase {
     func testExtractReceiptsThrowsMissingAPIKeyWhenNoneStored() async throws {
         APIKeyStore.delete()
         do {
-            _ = try await AnthropicVisionClient.extractReceipts(imageData: Data(), mediaType: "image/jpeg")
+            _ = try await AnthropicVisionClient.extractReceipts(images: [Data()], mediaType: "image/jpeg")
             XCTFail("Expected missingAPIKey error")
         } catch OCRError.missingAPIKey {
+            // expected
+        }
+    }
+
+    func testExtractReceiptsThrowsInvalidResponseForEmptyImages() async throws {
+        do {
+            _ = try await AnthropicVisionClient.extractReceipts(images: [], mediaType: "image/jpeg")
+            XCTFail("Expected invalidResponse error")
+        } catch OCRError.invalidResponse {
             // expected
         }
     }

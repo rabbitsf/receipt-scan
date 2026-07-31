@@ -40,4 +40,26 @@ final class PhotoAttachFlowTests: XCTestCase {
 
         XCTAssertTrue(app.buttons["Choose from Library"].waitForExistence(timeout: 5))
     }
+
+    /// Confirms the same dialog also offers "Import PDF" — same
+    /// dialog-presence-only scope as the test above, for the same reason:
+    /// don't attempt to automate the system document picker sheet itself
+    /// in XCUITest (same fragility class as the removed Photos-picker test
+    /// documented above). The render pipeline
+    /// (`PDFPageRenderer.renderFirstPage(of:)`) and the "only first page
+    /// scanned" warning alert are covered by `PDFPageRendererTests.swift`
+    /// (unit) and manual real-device verification instead.
+    func testPhotoSourceDialogOffersImportPDFOption() throws {
+        let app = XCUIApplication()
+        app.terminate()
+        app.launch()
+
+        app.buttons["addReceiptButton"].tap()
+
+        let attachButton = app.buttons["attachPhotoButton"]
+        XCTAssertTrue(attachButton.waitForExistence(timeout: 10))
+        attachButton.tap()
+
+        XCTAssertTrue(app.buttons["Import PDF"].waitForExistence(timeout: 5))
+    }
 }

@@ -4,6 +4,8 @@ import SwiftData
 struct ReceiptListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Receipt.date, order: .reverse) private var receipts: [Receipt]
+    @Query(sort: \CustomCategory.name) private var customCategories: [CustomCategory]
+    @Query(sort: \CustomGroup.name) private var customGroups: [CustomGroup]
 
     @State private var showingAddReceipt = false
     @State private var editingReceipt: Receipt?
@@ -48,11 +50,14 @@ struct ReceiptListView: View {
     }
 
     private var availableCategories: [String] {
-        CategoryOptions.mergeWithInUseCategories(receipts.compactMap(\.category))
+        CategoryOptions.mergeWithInUseCategories(
+            receipts.compactMap(\.category),
+            customCategories: customCategories.map(\.name)
+        )
     }
 
     private var availableGroups: [String] {
-        GroupOptions.availableGroups(from: receipts)
+        GroupOptions.availableGroups(from: receipts, customGroups: customGroups.map(\.name))
     }
 
     /// True only when every currently-visible (filtered) receipt is

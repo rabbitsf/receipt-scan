@@ -14,7 +14,7 @@ struct ReceiptTrackerApp: App {
     }
 
     private static func makeContainer() -> ModelContainer {
-        let container = try! ModelContainer(for: Receipt.self)
+        let container = try! ModelContainer(for: Receipt.self, CustomCategory.self, CustomGroup.self)
 
         // Seeds one receipt with a real (tiny, generated) photo attached,
         // gated behind a launch environment variable set only by

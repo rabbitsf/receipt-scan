@@ -20,14 +20,20 @@
 }
 
 .app-content {
-  max-width: 1100px;
+  /* Was 1100px, tuned for the receipts table's original 7 columns (see
+     Section 4 of PROJECT_GUIDE.md) — widened to fit the Group column
+     added afterward without the table needing horizontal scroll at
+     typical viewport widths. `.table-scroll` (below) still catches
+     narrower viewports or unusually long content. */
+  max-width: 1200px;
   margin: 0 auto;
   padding: 28px 20px 56px;
 }
 
 .upload-receipt,
 .receipt-form-screen,
-.dashboard {
+.dashboard,
+.settings-view {
   max-width: 520px;
   margin: 0 auto;
 }
@@ -35,7 +41,8 @@
 .receipt-list,
 .upload-receipt,
 .receipt-form-screen,
-.dashboard {
+.dashboard,
+.settings-view {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -234,6 +241,17 @@ button.secondary {
 
 /* Receipts table */
 
+/* Auto table layout computes a browser-dependent intrinsic width (e.g.
+   Firefox vs Chromium can disagree by tens of pixels for the same markup,
+   especially with the flex `.row-actions` cell) — `width: 100%` on the
+   table alone doesn't stop that from exceeding the card's content box.
+   Scoping the scroll to this wrapper keeps any overflow contained (and
+   scrollable) within the card's rounded white background on every
+   browser/viewport, instead of the table visually spilling past it. */
+.table-scroll {
+  overflow-x: auto;
+}
+
 .receipts-table {
   width: 100%;
   border-collapse: collapse;
@@ -392,4 +410,69 @@ button.secondary {
   .stat-row {
     grid-template-columns: 1fr;
   }
+}
+
+/* Settings */
+
+.settings-section {
+  margin-top: 24px;
+}
+
+.settings-section h3 {
+  margin-bottom: 8px;
+}
+
+.settings-section-hint {
+  color: var(--ink-muted);
+  font-size: 13px;
+  margin: -4px 0 12px;
+}
+
+.settings-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.settings-list li.predefined {
+  color: var(--ink-muted);
+}
+
+.settings-row-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.settings-row-actions button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.settings-inline-form {
+  display: flex;
+  gap: 8px;
+}
+
+.settings-inline-form input {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: inherit;
+  font-size: 14px;
 }

@@ -3,6 +3,7 @@ import UploadReceipt from './components/UploadReceipt.jsx';
 import ReceiptFormScreen from './components/ReceiptFormScreen.jsx';
 import ReceiptList from './components/ReceiptList.jsx';
 import Dashboard from './components/Dashboard.jsx';
+import SettingsView from './components/SettingsView.jsx';
 import './App.css';
 
 function App() {
@@ -26,6 +27,7 @@ function App() {
             onAddManual={() => setView({ name: 'form', receiptId: null })}
             onEdit={(id) => setView({ name: 'form', receiptId: id })}
             onDashboard={() => setView({ name: 'dashboard' })}
+            onSettings={() => setView({ name: 'settings' })}
           />
         )}
 
@@ -34,6 +36,8 @@ function App() {
         {view.name === 'form' && <ReceiptFormScreen receiptId={view.receiptId} onDone={goToList} />}
 
         {view.name === 'dashboard' && <Dashboard onDone={goToList} />}
+
+        {view.name === 'settings' && <SettingsView onDone={goToList} />}
       </main>
     </div>
   );

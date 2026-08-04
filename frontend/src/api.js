@@ -15,11 +15,17 @@ export async function uploadReceiptImage(file) {
   return res.json();
 }
 
-export async function extractReceiptFields(imagePath) {
+// Accepts either a single imagePath (string) or multiple (array) — e.g. all
+// rendered pages of an imported PDF sent together so the model can decide
+// whether they're one receipt or several.
+export async function extractReceiptFields(imagePathOrPaths) {
+  const body = Array.isArray(imagePathOrPaths)
+    ? { imagePaths: imagePathOrPaths }
+    : { imagePath: imagePathOrPaths };
   const res = await fetch(`${BASE}/extract`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ imagePath }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(await parseErrorResponse(res, 'Extraction failed'));
   return res.json();
@@ -41,6 +47,7 @@ export async function listReceipts(filters = {}) {
   if (filters.month) params.set('month', filters.month);
   if (filters.q) params.set('q', filters.q);
   if (filters.category) params.set('category', filters.category);
+  if (filters.group) params.set('group', filters.group);
 
   const qs = params.toString();
   const res = await fetch(qs ? `${BASE}?${qs}` : BASE);
@@ -89,4 +96,70 @@ export async function getCategories() {
   const res = await fetch(`${BASE}/categories`);
   if (!res.ok) throw new Error(await parseErrorResponse(res, 'Failed to load categories'));
   return res.json();
+}
+
+export async function createCategory(name) {
+  const res = await fetch(`${BASE}/categories`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(await parseErrorResponse(res, 'Failed to add category'));
+  return res.json();
+}
+
+export async function renameCategory(name, newName) {
+  const res = await fetch(`${BASE}/categories/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: newName }),
+  });
+  if (!res.ok) throw new Error(await parseErrorResponse(res, 'Failed to rename category'));
+  return res.json();
+}
+
+export async function deleteCategory(name) {
+  const res = await fetch(`${BASE}/categories/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body.error || 'Failed to delete category');
+    err.count = body.count;
+    throw err;
+  }
+}
+
+export async function getGroups() {
+  const res = await fetch(`${BASE}/groups`);
+  if (!res.ok) throw new Error(await parseErrorResponse(res, 'Failed to load groups'));
+  return res.json();
+}
+
+export async function createGroup(name) {
+  const res = await fetch(`${BASE}/groups`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(await parseErrorResponse(res, 'Failed to add group'));
+  return res.json();
+}
+
+export async function renameGroup(name, newName) {
+  const res = await fetch(`${BASE}/groups/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: newName }),
+  });
+  if (!res.ok) throw new Error(await parseErrorResponse(res, 'Failed to rename group'));
+  return res.json();
+}
+
+export async function deleteGroup(name) {
+  const res = await fetch(`${BASE}/groups/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body.error || 'Failed to delete group');
+    err.count = body.count;
+    throw err;
+  }
 }

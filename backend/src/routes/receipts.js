@@ -13,10 +13,17 @@ import {
   getYearSummary,
   countReceiptsByImagePath,
   getDistinctCategories,
+  getDistinctGroups,
 } from '../services/receiptsRepository.js';
 import { extractReceiptFields } from '../services/ocrService.js';
 import { generateReceiptsPdf, generateReceiptsExcel } from '../services/exportService.js';
 import { dataDir, uploadsDir } from '../utils/paths.js';
+import {
+  listCustomValues,
+  createCustomValue,
+  renameCustomValue,
+  deleteCustomValueIfUnused,
+} from '../services/customValuesRepository.js';
 
 const router = Router();
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -74,6 +81,9 @@ function validateReceiptInput(body, { partial = false } = {}) {
   if (body.category !== undefined) {
     result.category = body.category === null ? null : String(body.category).trim();
   }
+  if (body.group !== undefined) {
+    result.group = body.group === null ? null : String(body.group).trim();
+  }
   if (body.note !== undefined) {
     result.note = body.note === null ? null : String(body.note).trim();
   }
@@ -85,7 +95,7 @@ function validateReceiptInput(body, { partial = false } = {}) {
 }
 
 function validateFilterParams(query) {
-  const { year, month, q, category } = query;
+  const { year, month, q, category, group } = query;
   const errors = [];
 
   if (year !== undefined && !/^\d{4}$/.test(year)) {
@@ -98,7 +108,7 @@ function validateFilterParams(query) {
     }
   }
 
-  return { errors, filters: { year, month, q, category } };
+  return { errors, filters: { year, month, q, category, group } };
 }
 
 function buildExportFilename(filters, format) {
@@ -106,6 +116,7 @@ function buildExportFilename(filters, format) {
   if (filters.year) parts.push(filters.year);
   if (filters.month) parts.push(String(filters.month).padStart(2, '0'));
   if (filters.category) parts.push('category');
+  if (filters.group) parts.push('group');
   if (filters.q) parts.push('search');
   return `${parts.join('-')}.${format}`;
 }
@@ -156,23 +167,35 @@ router.post('/upload', (req, res) => {
 
 router.use('/images', express.static(uploadsDir));
 
+// PDF page cap, mirrors iOS's `PDFPageRenderer.maxPages`.
+const MAX_EXTRACT_IMAGES = 5;
+
 router.post('/extract', async (req, res) => {
-  const { imagePath } = req.body;
-  if (typeof imagePath !== 'string' || !imagePath) {
-    return res.status(400).json({ error: 'imagePath is required' });
+  const { imagePath, imagePaths } = req.body;
+  const paths = Array.isArray(imagePaths) ? imagePaths : imagePath !== undefined ? [imagePath] : [];
+
+  if (paths.length === 0 || !paths.every((p) => typeof p === 'string' && p)) {
+    return res.status(400).json({ error: 'imagePath or a non-empty imagePaths array of strings is required' });
+  }
+  if (paths.length > MAX_EXTRACT_IMAGES) {
+    return res.status(400).json({ error: `imagePaths cannot contain more than ${MAX_EXTRACT_IMAGES} images` });
   }
 
   const resolvedDataDir = path.resolve(dataDir);
-  const absPath = path.resolve(dataDir, imagePath);
-  if (!absPath.startsWith(resolvedDataDir + path.sep)) {
-    return res.status(400).json({ error: 'Invalid imagePath' });
-  }
-  if (!fs.existsSync(absPath)) {
-    return res.status(404).json({ error: 'Image not found' });
+  const absPaths = [];
+  for (const p of paths) {
+    const absPath = path.resolve(dataDir, p);
+    if (!absPath.startsWith(resolvedDataDir + path.sep)) {
+      return res.status(400).json({ error: 'Invalid imagePath' });
+    }
+    if (!fs.existsSync(absPath)) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+    absPaths.push(absPath);
   }
 
   try {
-    const extracted = await extractReceiptFields(absPath);
+    const extracted = await extractReceiptFields(absPaths);
     res.json(extracted);
   } catch (err) {
     console.error('OCR extraction failed:', err);
@@ -252,9 +275,66 @@ router.get('/summary', (req, res) => {
   res.json(getYearSummary(year));
 });
 
-// Registered before '/:id' so this fixed path isn't shadowed by the param route.
+// Union of in-use values and Settings-created (possibly zero-usage)
+// `custom_values` entries, deduplicated and sorted — so a Settings-created
+// category/group appears in pickers before any receipt uses it. Mirrors
+// iOS's `CategoryOptions.mergeWithInUseCategories(_:customCategories:)`.
+function mergedDistinctValues(kind, inUse) {
+  const custom = listCustomValues(kind).map((v) => v.name);
+  return Array.from(new Set([...inUse, ...custom])).sort();
+}
+
+// Registered before '/:id' so these fixed paths aren't shadowed by the param route.
 router.get('/categories', (req, res) => {
-  res.json(getDistinctCategories());
+  res.json(mergedDistinctValues('category', getDistinctCategories()));
+});
+
+router.post('/categories', (req, res) => {
+  const created = createCustomValue('category', req.body.name);
+  if (!created) return res.status(400).json({ error: 'name is required' });
+  res.status(201).json(created);
+});
+
+router.put('/categories/:name', (req, res) => {
+  const renamed = renameCustomValue('category', req.params.name, req.body.name);
+  if (!renamed) return res.status(400).json({ error: 'name is required and must differ from the current name' });
+  res.json(renamed);
+});
+
+router.delete('/categories/:name', (req, res) => {
+  const result = deleteCustomValueIfUnused('category', req.params.name);
+  if (!result.deleted) {
+    return res
+      .status(409)
+      .json({ error: `Still used by ${result.count} receipt${result.count === 1 ? '' : 's'}`, count: result.count });
+  }
+  res.status(204).end();
+});
+
+router.get('/groups', (req, res) => {
+  res.json(mergedDistinctValues('group', getDistinctGroups()));
+});
+
+router.post('/groups', (req, res) => {
+  const created = createCustomValue('group', req.body.name);
+  if (!created) return res.status(400).json({ error: 'name is required' });
+  res.status(201).json(created);
+});
+
+router.put('/groups/:name', (req, res) => {
+  const renamed = renameCustomValue('group', req.params.name, req.body.name);
+  if (!renamed) return res.status(400).json({ error: 'name is required and must differ from the current name' });
+  res.json(renamed);
+});
+
+router.delete('/groups/:name', (req, res) => {
+  const result = deleteCustomValueIfUnused('group', req.params.name);
+  if (!result.deleted) {
+    return res
+      .status(409)
+      .json({ error: `Still used by ${result.count} receipt${result.count === 1 ? '' : 's'}`, count: result.count });
+  }
+  res.status(204).end();
 });
 
 router.get('/:id', (req, res) => {
@@ -277,6 +357,7 @@ router.put('/:id', (req, res) => {
     merchant: result.merchant !== undefined ? result.merchant : existing.merchant,
     description: result.description !== undefined ? result.description : existing.description,
     category: result.category !== undefined ? result.category : existing.category,
+    group: result.group !== undefined ? result.group : existing.group,
     note: result.note !== undefined ? result.note : existing.note,
     imagePath: result.imagePath !== undefined ? result.imagePath : existing.imagePath,
   };

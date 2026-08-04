@@ -42,14 +42,31 @@ const MEDIA_TYPES = {
   '.heif': 'image/heif',
 };
 
-export async function extractReceiptFields(imageAbsolutePath) {
-  const ext = path.extname(imageAbsolutePath).toLowerCase();
-  const mediaType = MEDIA_TYPES[ext];
-  if (!mediaType) {
-    throw new Error(`Unsupported image type for OCR: ${ext}`);
+// Accepts either a single absolute image path (string) or an array of 1..N
+// absolute paths (e.g. rendered pages of an imported PDF) — one `image`
+// content block per path, same request. Mirrors iOS's
+// `AnthropicVisionClient.extractReceipts(images:)` unification: ONE
+// canonical function for both the single-photo and multi-page-PDF paths,
+// not two parallel implementations. The prompt/schema are unchanged and
+// already array-returning — the model decides whether the supplied pages
+// are one receipt spanning multiple images or several separate receipts.
+export async function extractReceiptFields(imageAbsolutePathOrPaths) {
+  const imagePaths = Array.isArray(imageAbsolutePathOrPaths)
+    ? imageAbsolutePathOrPaths
+    : [imageAbsolutePathOrPaths];
+  if (imagePaths.length === 0) {
+    throw new Error('At least one image path is required for OCR extraction');
   }
 
-  const imageBase64 = fs.readFileSync(imageAbsolutePath).toString('base64');
+  const imageBlocks = imagePaths.map((imageAbsolutePath) => {
+    const ext = path.extname(imageAbsolutePath).toLowerCase();
+    const mediaType = MEDIA_TYPES[ext];
+    if (!mediaType) {
+      throw new Error(`Unsupported image type for OCR: ${ext}`);
+    }
+    const imageBase64 = fs.readFileSync(imageAbsolutePath).toString('base64');
+    return { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } };
+  });
 
   const response = await getClient().messages.create({
     model: 'claude-opus-4-8',
@@ -59,10 +76,10 @@ export async function extractReceiptFields(imageAbsolutePath) {
       {
         role: 'user',
         content: [
-          { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
+          ...imageBlocks,
           {
             type: 'text',
-            text: 'This photo may contain one or more separate, distinct receipts. Identify EACH separate receipt in the image and extract its date, merchant name, total cost, and a brief description of the item(s) purchased as its own entry. Do not merge multiple receipts into one entry. If there is only one receipt, return a single entry. Give your best reasonable guess for any field that is not perfectly clear.',
+            text: 'These images may contain one or more separate, distinct receipts (a multi-page receipt spans multiple images; unrelated receipts are separate). Identify EACH separate receipt and extract its date, merchant name, total cost, and a brief description of the item(s) purchased as its own entry. Do not merge multiple receipts into one entry. If there is only one receipt, return a single entry. Give your best reasonable guess for any field that is not perfectly clear.',
           },
         ],
       },

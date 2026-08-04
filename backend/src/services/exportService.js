@@ -24,14 +24,14 @@ export function generateReceiptsPdf(receipts) {
 
   doc.font('Courier-Bold').fontSize(9);
   doc.text(
-    `${pad('Date', 10)}${pad('Merchant', 16)}${pad('Total', 9)}${pad('Description', 20)}${pad('Category', 14)}${pad('Note', 16)}`,
+    `${pad('Date', 10)}${pad('Merchant', 16)}${pad('Total', 9)}${pad('Description', 20)}${pad('Category', 14)}${pad('Group', 14)}${pad('Note', 16)}`,
   );
   doc.moveDown(0.2);
   doc.font('Courier').fontSize(9);
 
   for (const r of receipts) {
     doc.text(
-      `${pad(r.date, 10)}${pad(r.merchant, 16)}${pad(`$${r.totalCost.toFixed(2)}`, 9)}${pad(r.description, 20)}${pad(r.category || 'Uncategorized', 14)}${pad(r.note, 16)}`,
+      `${pad(r.date, 10)}${pad(r.merchant, 16)}${pad(`$${r.totalCost.toFixed(2)}`, 9)}${pad(r.description, 20)}${pad(r.category || 'Uncategorized', 14)}${pad(r.group, 14)}${pad(r.note, 16)}`,
     );
   }
 
@@ -49,6 +49,7 @@ export async function generateReceiptsExcel(receipts) {
     { header: 'Total', key: 'total', width: 12 },
     { header: 'Description', key: 'description', width: 40 },
     { header: 'Category', key: 'category', width: 22 },
+    { header: 'Group', key: 'group', width: 22 },
     { header: 'Note', key: 'note', width: 30 },
   ];
   sheet.getRow(1).font = { bold: true };
@@ -60,6 +61,7 @@ export async function generateReceiptsExcel(receipts) {
       total: r.totalCost,
       description: r.description,
       category: r.category || 'Uncategorized',
+      group: r.group,
       note: r.note,
     });
   }

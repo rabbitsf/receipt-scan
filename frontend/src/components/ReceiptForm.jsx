@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { uploadReceiptImage, extractReceiptFields, getCategories } from '../api.js';
+import { uploadReceiptImage, extractReceiptFields, getCategories, getGroups } from '../api.js';
 import { emptyReceiptValues as emptyValues, toFormValues } from '../receiptFields.js';
 import { CATEGORY_OPTIONS, CUSTOM_CATEGORY_VALUE, mergeCategoryOptions } from '../categories.js';
+import { CUSTOM_GROUP_VALUE } from '../groups.js';
 
 export default function ReceiptForm({ initialValues, imagePath: initialImagePath, onSubmit, submitLabel = 'Save', onCancel }) {
   const [values, setValues] = useState({ ...emptyValues, ...initialValues });
@@ -10,6 +11,8 @@ export default function ReceiptForm({ initialValues, imagePath: initialImagePath
     const category = initialValues?.category;
     return category && !CATEGORY_OPTIONS.includes(category) ? 'custom' : 'select';
   });
+  const [groupOptions, setGroupOptions] = useState([]);
+  const [groupMode, setGroupMode] = useState(() => (initialValues?.group ? 'custom' : 'select'));
   const [imagePath, setImagePath] = useState(initialImagePath ?? null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [extractingImage, setExtractingImage] = useState(false);
@@ -23,6 +26,12 @@ export default function ReceiptForm({ initialValues, imagePath: initialImagePath
   useEffect(() => {
     getCategories()
       .then((custom) => setCategoryOptions(mergeCategoryOptions(custom)))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    getGroups()
+      .then(setGroupOptions)
       .catch(() => {});
   }, []);
 
@@ -48,6 +57,17 @@ export default function ReceiptForm({ initialValues, imagePath: initialImagePath
     } else {
       setCategoryMode('select');
       setValues((v) => ({ ...v, category: value }));
+    }
+  }
+
+  function handleGroupSelectChange(e) {
+    const value = e.target.value;
+    if (value === CUSTOM_GROUP_VALUE) {
+      setGroupMode('custom');
+      setValues((v) => ({ ...v, group: '' }));
+    } else {
+      setGroupMode('select');
+      setValues((v) => ({ ...v, group: value }));
     }
   }
 
@@ -109,6 +129,7 @@ export default function ReceiptForm({ initialValues, imagePath: initialImagePath
         totalCost: Number(values.totalCost),
         description: values.description,
         category: values.category || null,
+        group: values.group || null,
         note: values.note || null,
         imagePath: imagePath ?? null,
       });
@@ -194,6 +215,29 @@ export default function ReceiptForm({ initialValues, imagePath: initialImagePath
         <label>
           Custom category
           <input type="text" name="category" value={values.category ?? ''} onChange={handleChange} />
+        </label>
+      )}
+
+      <label>
+        Group
+        <select
+          value={groupMode === 'custom' ? CUSTOM_GROUP_VALUE : values.group || ''}
+          onChange={handleGroupSelectChange}
+        >
+          <option value="">— No group —</option>
+          {groupOptions.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+          <option value={CUSTOM_GROUP_VALUE}>New group…</option>
+        </select>
+      </label>
+
+      {groupMode === 'custom' && (
+        <label>
+          Group name
+          <input type="text" name="group" value={values.group ?? ''} onChange={handleChange} />
         </label>
       )}
 

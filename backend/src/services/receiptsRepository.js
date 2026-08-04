@@ -10,6 +10,7 @@ function rowToReceipt(row) {
     merchant: row.merchant,
     description: row.description,
     category: row.category,
+    group: row.group,
     note: row.note,
     imagePath: row.image_path,
     createdAt: row.created_at,
@@ -17,9 +18,11 @@ function rowToReceipt(row) {
   };
 }
 
+// `group` is a SQL reserved word — double-quoted everywhere it's
+// referenced as a column/parameter name below.
 const insertStmt = db.prepare(`
-  INSERT INTO receipts (date, total_cost_cents, merchant, description, category, note, image_path)
-  VALUES (@date, @total_cost_cents, @merchant, @description, @category, @note, @image_path)
+  INSERT INTO receipts (date, total_cost_cents, merchant, description, category, "group", note, image_path)
+  VALUES (@date, @total_cost_cents, @merchant, @description, @category, @group, @note, @image_path)
 `);
 
 const selectByIdStmt = db.prepare('SELECT * FROM receipts WHERE id = ?');
@@ -31,6 +34,7 @@ const updateStmt = db.prepare(`
       merchant = @merchant,
       description = @description,
       category = @category,
+      "group" = @group,
       note = @note,
       image_path = @image_path,
       updated_at = datetime('now')
@@ -39,7 +43,7 @@ const updateStmt = db.prepare(`
 
 const deleteStmt = db.prepare('DELETE FROM receipts WHERE id = ?');
 
-export function listReceipts({ year, month, q, category } = {}) {
+export function listReceipts({ year, month, q, category, group } = {}) {
   const conditions = [];
   const params = {};
 
@@ -64,6 +68,11 @@ export function listReceipts({ year, month, q, category } = {}) {
     params.category = category;
   }
 
+  if (group) {
+    conditions.push('"group" = @group');
+    params.group = group;
+  }
+
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const stmt = db.prepare(`SELECT * FROM receipts ${where} ORDER BY date DESC, id DESC`);
   return stmt.all(params).map(rowToReceipt);
@@ -80,20 +89,21 @@ export function getReceiptsByIds(ids) {
   return stmt.all(...ids).map(rowToReceipt);
 }
 
-export function createReceipt({ date, totalCost, merchant, description, category, note, imagePath }) {
+export function createReceipt({ date, totalCost, merchant, description, category, group, note, imagePath }) {
   const info = insertStmt.run({
     date,
     total_cost_cents: toCents(totalCost),
     merchant: merchant ?? null,
     description: description ?? null,
     category: category ?? null,
+    group: group ?? null,
     note: note ?? null,
     image_path: imagePath ?? null,
   });
   return getReceiptById(info.lastInsertRowid);
 }
 
-export function updateReceipt(id, { date, totalCost, merchant, description, category, note, imagePath }) {
+export function updateReceipt(id, { date, totalCost, merchant, description, category, group, note, imagePath }) {
   const existing = selectByIdStmt.get(id);
   if (!existing) return null;
 
@@ -104,6 +114,7 @@ export function updateReceipt(id, { date, totalCost, merchant, description, cate
     merchant: merchant ?? null,
     description: description ?? null,
     category: category ?? null,
+    group: group ?? null,
     note: note ?? null,
     image_path: imagePath ?? existing.image_path,
   });
@@ -122,6 +133,13 @@ export function getDistinctCategories() {
     .prepare("SELECT DISTINCT category FROM receipts WHERE category IS NOT NULL AND category != '' ORDER BY category")
     .all();
   return rows.map((r) => r.category);
+}
+
+export function getDistinctGroups() {
+  const rows = db
+    .prepare('SELECT DISTINCT "group" FROM receipts WHERE "group" IS NOT NULL AND "group" != \'\' ORDER BY "group"')
+    .all();
+  return rows.map((r) => r.group);
 }
 
 export function countReceiptsByImagePath(imagePath) {
@@ -164,11 +182,29 @@ export function getYearSummary(year) {
     total: toDollars(r.cents),
   }));
 
+  // Deliberately excludes ungrouped receipts (no "Ungrouped" catch-all,
+  // unlike category's "Uncategorized" fallback) — mirrors iOS's Dashboard
+  // "By Group" section: Group is sparse/occasional, not a universal
+  // taxonomy like Category, so a group breakdown that's mostly "Ungrouped"
+  // wouldn't be useful.
+  const groupRows = db
+    .prepare(
+      `SELECT "group", SUM(total_cost_cents) AS cents
+       FROM receipts WHERE date LIKE @prefix AND "group" IS NOT NULL AND "group" != '' GROUP BY "group" ORDER BY cents DESC`,
+    )
+    .all({ prefix: `${yearNum}-%` });
+
+  const groupTotals = groupRows.map((r) => ({
+    group: r.group,
+    total: toDollars(r.cents),
+  }));
+
   return {
     year: yearNum,
     yearTotal: toDollars(yearTotalRow.cents),
     monthlyTotals,
     categoryTotals,
+    groupTotals,
     priorYear: yearNum - 1,
     priorYearTotal: toDollars(priorYearTotalRow.cents),
   };

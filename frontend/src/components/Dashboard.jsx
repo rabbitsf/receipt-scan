@@ -48,6 +48,9 @@ export default function Dashboard({ onDone }) {
   const maxCategoryTotal = summary?.categoryTotals?.length
     ? Math.max(1, ...summary.categoryTotals.map((c) => c.total))
     : 1;
+  const maxGroupTotal = summary?.groupTotals?.length
+    ? Math.max(1, ...summary.groupTotals.map((g) => g.total))
+    : 1;
 
   return (
     <div className="dashboard">
@@ -133,6 +136,32 @@ export default function Dashboard({ onDone }) {
                       <td className="amount">${c.total.toFixed(2)}</td>
                       <td className="bar-cell">
                         <span className="bar" style={{ width: `${(c.total / maxCategoryTotal) * 100}%` }} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {summary.groupTotals?.length > 0 && (
+            <>
+              <h3 className="dashboard-subheading">By group</h3>
+              <table className="dashboard-table">
+                <thead>
+                  <tr>
+                    <th>Group</th>
+                    <th>Total</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.groupTotals.map((g) => (
+                    <tr key={g.group}>
+                      <td>{g.group}</td>
+                      <td className="amount">${g.total.toFixed(2)}</td>
+                      <td className="bar-cell">
+                        <span className="bar" style={{ width: `${(g.total / maxGroupTotal) * 100}%` }} />
                       </td>
                     </tr>
                   ))}

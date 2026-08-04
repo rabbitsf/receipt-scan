@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { listReceipts, deleteReceipt, bulkDeleteReceipts, getCategories } from '../api.js';
+import { listReceipts, deleteReceipt, bulkDeleteReceipts, getCategories, getGroups } from '../api.js';
 import { CATEGORY_OPTIONS, mergeCategoryOptions } from '../categories.js';
 
 const ICON_PROPS = {
@@ -60,7 +60,7 @@ const MONTHS = [
   'December',
 ];
 
-export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboard }) {
+export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboard, onSettings }) {
   const [receipts, setReceipts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -68,15 +68,23 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
   const [year, setYear] = useState('');
   const [month, setMonth] = useState('');
   const [category, setCategory] = useState('');
+  const [group, setGroup] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [query, setQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [viewingImageUrl, setViewingImageUrl] = useState(null);
   const [categoryOptions, setCategoryOptions] = useState(CATEGORY_OPTIONS);
+  const [groupOptions, setGroupOptions] = useState([]);
 
   useEffect(() => {
     getCategories()
       .then((custom) => setCategoryOptions(mergeCategoryOptions(custom)))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    getGroups()
+      .then(setGroupOptions)
       .catch(() => {});
   }, []);
 
@@ -89,7 +97,7 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
     let cancelled = false;
     setLoading(true);
     setError(null);
-    listReceipts({ year, month, q: query, category })
+    listReceipts({ year, month, q: query, category, group })
       .then((data) => {
         if (!cancelled) setReceipts(data);
       })
@@ -102,12 +110,12 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
     return () => {
       cancelled = true;
     };
-  }, [year, month, query, category]);
+  }, [year, month, query, category, group]);
 
   // Filter changes invalidate the currently-loaded row set, so drop any stale selection.
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [year, month, query, category]);
+  }, [year, month, query, category, group]);
 
   async function handleDelete(id) {
     if (!window.confirm('Delete this receipt?')) return;
@@ -153,7 +161,7 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
     }
   }
 
-  const hasFilters = Boolean(year || month || query || category);
+  const hasFilters = Boolean(year || month || query || category || group);
 
   function handleExport(format) {
     const params = new URLSearchParams();
@@ -162,6 +170,7 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
     if (month) params.set('month', month);
     if (query) params.set('q', query);
     if (category) params.set('category', category);
+    if (group) params.set('group', group);
 
     const link = document.createElement('a');
     link.href = `/api/receipts/export?${params.toString()}`;
@@ -189,6 +198,9 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
         </button>
         <button type="button" className="secondary" onClick={onDashboard}>
           Dashboard
+        </button>
+        <button type="button" className="secondary" onClick={onSettings}>
+          Settings
         </button>
       </div>
 
@@ -224,6 +236,18 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
             {categoryOptions.map((c) => (
               <option key={c} value={c}>
                 {c}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Group
+          <select value={group} onChange={(e) => setGroup(e.target.value)}>
+            <option value="">All groups</option>
+            {groupOptions.map((g) => (
+              <option key={g} value={g}>
+                {g}
               </option>
             ))}
           </select>
@@ -271,7 +295,8 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
       )}
 
       {!loading && receipts.length > 0 && (
-        <table className="receipts-table">
+        <div className="table-scroll">
+          <table className="receipts-table">
           <thead>
             <tr>
               <th>
@@ -287,6 +312,7 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
               <th>Total</th>
               <th>Description</th>
               <th>Category</th>
+              <th>Group</th>
               <th>Note</th>
               <th></th>
             </tr>
@@ -309,6 +335,7 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
                   {r.description}
                 </td>
                 <td>{r.category || 'Uncategorized'}</td>
+                <td>{r.group}</td>
                 <td className="note-cell" title={r.note || ''}>
                   {r.note}
                 </td>
@@ -350,7 +377,8 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
       )}
 
       {viewingImageUrl && (

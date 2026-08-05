@@ -6,18 +6,37 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
+packages:
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    from: 7.1.0
 targets:
   ReceiptTracker:
     type: application
     platform: iOS
     sources:
       - path: ReceiptTracker
+    dependencies:
+      - package: GoogleSignIn
+        product: GoogleSignIn
     info:
       path: ReceiptTracker/Info.plist
       properties:
         UILaunchScreen: {}
         NSCameraUsageDescription: "Receipt Tracker uses the camera to photograph receipts so their details can be scanned automatically."
         NSPhotoLibraryAddUsageDescription: "Receipt Tracker can save a receipt photo to your Photos library when you choose Save to Photos."
+        # TODO(setup): replace with the real iOS OAuth Client ID from Google
+        # Cloud Console (APIs & Services > Credentials > Create Credentials >
+        # OAuth client ID > iOS, bundle ID com.webreceipt.ReceiptTracker).
+        # Sign-in/upload will not work until this is a real value.
+        GIDClientID: "451782245335-pjrcdkeij2e9nibofm3ne0uh9j0kbc2h.apps.googleusercontent.com"
+        CFBundleURLTypes:
+          - CFBundleURLSchemes:
+              # TODO(setup): replace with the REVERSED_CLIENT_ID shown in the
+              # same Google Cloud Console credential (or in the
+              # GoogleService-Info.plist if downloaded) — this is the OAuth
+              # redirect URL scheme, distinct from GIDClientID above.
+              - "com.googleusercontent.apps.451782245335-pjrcdkeij2e9nibofm3ne0uh9j0kbc2h"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.webreceipt.ReceiptTracker

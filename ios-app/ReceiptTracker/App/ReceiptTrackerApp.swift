@@ -9,6 +9,15 @@ struct ReceiptTrackerApp: App {
     var body: some Scene {
         WindowGroup {
             ReceiptListView()
+                .onOpenURL { url in
+                    GoogleDriveAuth.handle(url)
+                }
+                .task {
+                    // Silently restores a previous Google sign-in, if any —
+                    // must NOT be called from an interactive sign-in button
+                    // (see GIDSignIn's own guidance), only once at launch.
+                    await GoogleDriveAuth.restorePreviousSignIn()
+                }
         }
         .modelContainer(container)
     }

@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -11,6 +12,10 @@ struct SettingsView: View {
     @State private var apiKey: String = APIKeyStore.load() ?? ""
     @State private var hasStoredKey: Bool = APIKeyStore.load() != nil
     @State private var statusMessage: String?
+
+    @State private var isDriveConnected = GoogleDriveAuth.isSignedIn
+    @State private var isConnectingDrive = false
+    @State private var driveStatusMessage: String?
 
     @State private var newCategoryName = ""
     @State private var renamingCategory: String?
@@ -69,6 +74,44 @@ struct SettingsView: View {
                         statusMessage = "Key removed."
                     }
                     .accessibilityIdentifier("removeAPIKeyButton")
+                }
+
+                Section {
+                    if isDriveConnected {
+                        if let email = GoogleDriveAuth.signedInEmail {
+                            Text(email)
+                                .foregroundStyle(.secondary)
+                        }
+                        Button("Disconnect", role: .destructive) {
+                            GoogleDriveAuth.signOut()
+                            isDriveConnected = false
+                            driveStatusMessage = "Disconnected."
+                        }
+                        .accessibilityIdentifier("disconnectDriveButton")
+                    } else {
+                        Button {
+                            connectToDrive()
+                        } label: {
+                            if isConnectingDrive {
+                                ProgressView()
+                            } else {
+                                Text("Connect to Google Drive")
+                            }
+                        }
+                        .disabled(isConnectingDrive)
+                        .accessibilityIdentifier("connectDriveButton")
+                    }
+
+                    if let driveStatusMessage {
+                        Text(driveStatusMessage)
+                            .foregroundStyle(.secondary)
+                            .font(.footnote)
+                            .accessibilityIdentifier("driveStatusMessage")
+                    }
+                } header: {
+                    Text("Google Drive")
+                } footer: {
+                    Text("Connect once here to upload receipt photos to a \"Receipt Tracker\" folder in your Google Drive — from a receipt's photo view, or for multiple receipts at once via Select.")
                 }
 
                 Section {
@@ -290,6 +333,45 @@ struct SettingsView: View {
             modelContext.insert(CustomGroup(name: trimmed))
         }
         try? modelContext.save()
+    }
+
+    private func connectToDrive() {
+        guard let presenter = Self.topViewController() else {
+            driveStatusMessage = "Couldn't present the Google sign-in screen."
+            return
+        }
+        isConnectingDrive = true
+        driveStatusMessage = nil
+        Task {
+            do {
+                try await GoogleDriveAuth.signIn(presenting: presenter)
+                isDriveConnected = true
+                driveStatusMessage = "Connected."
+            } catch {
+                driveStatusMessage = error.localizedDescription
+            }
+            isConnectingDrive = false
+        }
+    }
+
+    /// Google's sign-in UI (`ASWebAuthenticationSession`/`SFSafariViewController`
+    /// depending on iOS version) needs a `UIViewController` to present from
+    /// — SwiftUI has no first-class way to hand one over, so this walks
+    /// UIKit's scene/window hierarchy to the topmost presented controller
+    /// (this Settings sheet itself, typically), the standard workaround for
+    /// UIKit-presenting SDKs called from pure SwiftUI.
+    @MainActor
+    private static func topViewController() -> UIViewController? {
+        guard
+            let scene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
+            var top = scene.windows.first(where: \.isKeyWindow)?.rootViewController
+        else {
+            return nil
+        }
+        while let presented = top.presentedViewController {
+            top = presented
+        }
+        return top
     }
 }
 

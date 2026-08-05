@@ -13,8 +13,17 @@ import UIKit
 /// closest match to "get a copy of this outside the app".
 struct ReceiptImageView: View {
     let imageData: Data
+    /// Filename to use if this photo is uploaded to Google Drive. Defaults
+    /// to today's date + a random fallback ID (still produces a valid,
+    /// non-colliding name) so call sites without a persisted `Receipt` yet
+    /// (e.g. `ReceiptFormView`'s in-progress photo preview) aren't required
+    /// to supply one — but real call sites should pass the receipt's actual
+    /// date/merchant for a meaningful name.
+    var uploadFilename: String = DriveUploadFilename.make(date: Date(), merchant: nil, fallbackID: UUID().uuidString)
+
     @Environment(\.dismiss) private var dismiss
-    @State private var saveStatusMessage: String?
+    @State private var statusMessage: String?
+    @State private var isUploadingToDrive = false
 
     // Pinch-to-zoom + pan. A plain ScrollView (the previous implementation)
     // never responds to a pinch gesture on its own — it only scrolls
@@ -120,16 +129,29 @@ struct ReceiptImageView: View {
                     }
                     .accessibilityIdentifier("savePhotoButton")
                 }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        uploadToDrive()
+                    } label: {
+                        if isUploadingToDrive {
+                            ProgressView()
+                        } else {
+                            Label("Upload to Drive", systemImage: "arrow.up.doc")
+                        }
+                    }
+                    .disabled(isUploadingToDrive)
+                    .accessibilityIdentifier("uploadToDriveButton")
+                }
             }
             .safeAreaInset(edge: .bottom) {
-                if let saveStatusMessage {
-                    Text(saveStatusMessage)
+                if let statusMessage {
+                    Text(statusMessage)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.vertical, 8)
                         .frame(maxWidth: .infinity)
                         .background(.thinMaterial)
-                        .accessibilityIdentifier("savePhotoStatus")
+                        .accessibilityIdentifier("imageActionStatus")
                 }
             }
         }
@@ -150,7 +172,25 @@ struct ReceiptImageView: View {
     private func saveToPhotos() {
         guard let uiImage = UIImage(data: imageData) else { return }
         UIImageWriteToSavedPhotosAlbum(uiImage, nil, nil, nil)
-        saveStatusMessage = "Saved to Photos"
+        statusMessage = "Saved to Photos"
+    }
+
+    private func uploadToDrive() {
+        guard GoogleDriveAuth.isSignedIn else {
+            statusMessage = "Not connected to Google Drive. Connect in Settings first."
+            return
+        }
+        isUploadingToDrive = true
+        statusMessage = nil
+        Task {
+            do {
+                try await GoogleDriveUploader.uploadOne(imageData: imageData, filename: uploadFilename)
+                statusMessage = "Uploaded to Google Drive"
+            } catch {
+                statusMessage = error.localizedDescription
+            }
+            isUploadingToDrive = false
+        }
     }
 }
 

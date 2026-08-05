@@ -334,7 +334,10 @@ struct ReceiptFormView: View {
             .photosPicker(isPresented: $showingLibraryPicker, selection: $photoPickerItem, matching: .images)
             .fullScreenCover(isPresented: $showingFullImage) {
                 if let imageData {
-                    ReceiptImageView(imageData: imageData)
+                    ReceiptImageView(
+                        imageData: imageData,
+                        uploadFilename: DriveUploadFilename.make(date: date, merchant: merchant, fallbackID: "draft")
+                    )
                 }
             }
             .onChange(of: photoPickerItem) { _, newItem in

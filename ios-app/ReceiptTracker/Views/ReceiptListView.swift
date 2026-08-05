@@ -33,6 +33,8 @@ struct ReceiptListView: View {
     @State private var isSelecting = false
     @State private var selection = Set<PersistentIdentifier>()
     @State private var exportedCSV: ExportedCSV?
+    @State private var isUploadingToDrive = false
+    @State private var driveUploadSummary: String?
 
     private var hasActiveFilters: Bool {
         selectedYear != nil || selectedMonth != nil || selectedCategory != nil || selectedGroup != nil || !searchText.isEmpty
@@ -345,6 +347,17 @@ struct ReceiptListView: View {
                                     exportCSV(filteredReceipts.filter { selection.contains($0.persistentModelID) })
                                 }
                                 .accessibilityIdentifier("bulkExportButton")
+                                Button {
+                                    uploadSelectedToDrive()
+                                } label: {
+                                    if isUploadingToDrive {
+                                        ProgressView()
+                                    } else {
+                                        Text("Upload")
+                                    }
+                                }
+                                .disabled(isUploadingToDrive)
+                                .accessibilityIdentifier("bulkUploadToDriveButton")
                             }
                         }
                     }
@@ -391,8 +404,23 @@ struct ReceiptListView: View {
             }
             .fullScreenCover(item: $viewingReceipt) { receipt in
                 if let imageData = receipt.imageData {
-                    ReceiptImageView(imageData: imageData)
+                    ReceiptImageView(
+                        imageData: imageData,
+                        uploadFilename: DriveUploadFilename.make(
+                            date: receipt.date,
+                            merchant: receipt.merchant,
+                            fallbackID: String(receipt.persistentModelID.hashValue)
+                        )
+                    )
                 }
+            }
+            .alert("Google Drive", isPresented: Binding(
+                get: { driveUploadSummary != nil },
+                set: { isPresented in if !isPresented { driveUploadSummary = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(driveUploadSummary ?? "")
             }
         }
     }
@@ -437,6 +465,44 @@ struct ReceiptListView: View {
             // Nothing meaningful to recover into here — export is best-effort;
             // a failed temp-file write would be a device-storage problem, not
             // something this screen can usefully surface differently.
+        }
+    }
+
+    /// Uploads every selected receipt's photo to Drive independently
+    /// (best-effort — see `GoogleDriveUploader.uploadAll`) and shows a
+    /// summary alert. Receipts with no attached photo are silently skipped
+    /// rather than counted as failures — there's nothing to upload for
+    /// them.
+    private func uploadSelectedToDrive() {
+        guard GoogleDriveAuth.isSignedIn else {
+            driveUploadSummary = "Not connected to Google Drive. Connect in Settings first."
+            return
+        }
+        let items: [DriveUploadItem] = filteredReceipts
+            .filter { selection.contains($0.persistentModelID) }
+            .compactMap { receipt in
+                guard let imageData = receipt.imageData else { return nil }
+                let filename = DriveUploadFilename.make(
+                    date: receipt.date,
+                    merchant: receipt.merchant,
+                    fallbackID: String(receipt.persistentModelID.hashValue)
+                )
+                return DriveUploadItem(filename: filename, imageData: imageData)
+            }
+        guard !items.isEmpty else {
+            driveUploadSummary = "None of the selected receipts have a photo to upload."
+            return
+        }
+
+        isUploadingToDrive = true
+        Task {
+            do {
+                let result = try await GoogleDriveUploader.uploadAll(items)
+                driveUploadSummary = result.summary
+            } catch {
+                driveUploadSummary = error.localizedDescription
+            }
+            isUploadingToDrive = false
         }
     }
 }

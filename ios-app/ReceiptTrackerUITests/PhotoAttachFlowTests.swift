@@ -22,7 +22,7 @@ final class PhotoAttachFlowTests: XCTestCase {
     /// PHPickerViewController via XCUITest is a known-fragile area on
     /// iOS/Simulator. The behavior that test would have covered is already
     /// verified two other ways that don't share this fragility:
-    /// `AnthropicVisionClientTests.testExtractReceiptsThrowsMissingAPIKeyWhenNoneStored`
+    /// `ReceiptExtractorTests.testExtractReceiptsThrowsMissingAPIKeyWhenNoneStored`
     /// (fast, deterministic unit test) and the user's own real-device,
     /// real-photo, real-API-key manual verification (2026-07-23).
     func testPhotoSourceDialogOffersLibraryOption() throws {

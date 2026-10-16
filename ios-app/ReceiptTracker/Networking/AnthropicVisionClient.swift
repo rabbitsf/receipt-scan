@@ -1,86 +1,36 @@
 import Foundation
 
-struct ExtractedReceipt: Decodable, Equatable {
-    let date: String
-    let merchant: String
-    let totalCost: Double
-    let description: String
-
-    enum CodingKeys: String, CodingKey {
-        case date, merchant, description
-        case totalCost = "total_cost"
-    }
-}
-
-enum OCRError: LocalizedError, Equatable {
-    case missingAPIKey
-    case invalidResponse
-    case server(String)
-    case noTextContent
-    case invalidJSON
-    case unexpectedShape
-
-    var errorDescription: String? {
-        switch self {
-        case .missingAPIKey:
-            return "No Anthropic API key set. Add one in Settings to scan receipts."
-        case .invalidResponse:
-            return "The server returned an unexpected response."
-        case .server(let message):
-            return message
-        case .noTextContent:
-            return "OCR extraction returned no text content."
-        case .invalidJSON:
-            return "OCR extraction returned invalid JSON."
-        case .unexpectedShape:
-            return "OCR extraction returned an unexpected shape."
-        }
-    }
-}
-
 /// Direct on-device client for Claude's Vision API — no backend involved,
 /// per the standalone-architecture pivot (docs/plans/2026-07-23-ios-app.md).
-/// Ports `backend/src/services/ocrService.js`'s exact model, prompt, and
-/// JSON schema so extraction quality matches the web app; do not redesign
-/// the prompt/schema independently of that file.
-enum AnthropicVisionClient {
+/// Only the Anthropic wire format lives here; the prompt/schema are shared
+/// with the other providers via `ReceiptExtraction`, and key lookup/model
+/// choice/sending go through `ReceiptExtractor`.
+///
+/// `images` may hold more than one image — e.g. every rendered page of
+/// an imported multi-page PDF — sent together in one request so the
+/// model can reason across all of them at once. The response schema
+/// already returns an *array* of receipts regardless of image count,
+/// so this naturally covers both "these pages are one receipt" (array
+/// of length 1) and "these pages are actually separate receipts, e.g.
+/// a scanned stack" (array of length >1, which flows into the same
+/// review-queue mechanism a multi-receipt photo already uses) — no
+/// separate code path needed for either case.
+enum AnthropicVisionClient: VisionOCRClient {
     static let endpoint = URL(string: "https://api.anthropic.com/v1/messages")!
-    static let model = "claude-opus-4-8"
     static let anthropicVersion = "2023-06-01"
-    static let extractionPrompt = """
-    This photo may contain one or more separate, distinct receipts. Identify EACH separate receipt in the image and extract its date, merchant name, total cost, and a brief description of the item(s) purchased as its own entry. Do not merge multiple receipts into one entry. If there is only one receipt, return a single entry. Give your best reasonable guess for any field that is not perfectly clear.
-    """
 
-    /// `images` may hold more than one image — e.g. every rendered page of
-    /// an imported multi-page PDF — sent together in one request so the
-    /// model can reason across all of them at once. The response schema
-    /// already returns an *array* of receipts regardless of image count,
-    /// so this naturally covers both "these pages are one receipt" (array
-    /// of length 1) and "these pages are actually separate receipts, e.g.
-    /// a scanned stack" (array of length >1, which flows into the same
-    /// review-queue mechanism a multi-receipt photo already uses) — no
-    /// separate code path needed for either case.
-    static func extractReceipts(images: [Data], mediaType: String, session: URLSession = .shared) async throws -> [ExtractedReceipt] {
-        guard !images.isEmpty else {
-            throw OCRError.invalidResponse
-        }
-        guard let apiKey = APIKeyStore.load(), !apiKey.isEmpty else {
-            throw OCRError.missingAPIKey
-        }
-
+    static func makeRequest(images: [Data], mediaType: String, model: String, apiKey: String) throws -> URLRequest {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue(anthropicVersion, forHTTPHeaderField: "anthropic-version")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody(images: images, mediaType: mediaType))
-
-        let (data, response) = try await session.data(for: request)
-        return try parseReceipts(from: data, response: response)
+        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody(images: images, mediaType: mediaType, model: model))
+        return request
     }
 
     /// Exposed for unit testing without hitting the network.
-    static func requestBody(images: [Data], mediaType: String) -> [String: Any] {
+    static func requestBody(images: [Data], mediaType: String, model: String) -> [String: Any] {
         let imageBlocks: [[String: Any]] = images.map { imageData in
             [
                 "type": "image",
@@ -93,23 +43,19 @@ enum AnthropicVisionClient {
             "output_config": [
                 "format": [
                     "type": "json_schema",
-                    "schema": receiptsSchema(),
+                    "schema": ReceiptExtraction.receiptsSchema(),
                 ],
             ],
             "messages": [[
                 "role": "user",
-                "content": imageBlocks + [["type": "text", "text": extractionPrompt]],
+                "content": imageBlocks + [["type": "text", "text": ReceiptExtraction.prompt]],
             ]],
         ]
     }
 
     /// Exposed for unit testing without hitting the network.
     static func parseReceipts(from data: Data, response: URLResponse) throws -> [ExtractedReceipt] {
-        guard let http = response as? HTTPURLResponse else { throw OCRError.invalidResponse }
-        guard (200...299).contains(http.statusCode) else {
-            let message = (try? JSONDecoder().decode(AnthropicErrorBody.self, from: data))?.error.message
-            throw OCRError.server(message ?? "Request failed with status \(http.statusCode).")
-        }
+        try ReceiptExtraction.validateHTTPResponse(response, data: data)
 
         let messageResponse: MessagesAPIResponse
         do {
@@ -121,39 +67,7 @@ enum AnthropicVisionClient {
         guard let textBlock = messageResponse.content.first(where: { $0.type == "text" }), let text = textBlock.text else {
             throw OCRError.noTextContent
         }
-        guard let jsonData = text.data(using: .utf8) else {
-            throw OCRError.invalidJSON
-        }
-
-        do {
-            let parsed = try JSONDecoder().decode(ExtractedReceiptsResponse.self, from: jsonData)
-            return parsed.receipts
-        } catch {
-            throw OCRError.unexpectedShape
-        }
-    }
-
-    private static func receiptFieldsSchema() -> [String: Any] {
-        [
-            "type": "object",
-            "properties": [
-                "date": ["type": "string", "description": "Receipt date in YYYY-MM-DD format"],
-                "merchant": ["type": "string", "description": "Merchant or vendor name"],
-                "total_cost": ["type": "number", "description": "Total amount charged, in dollars"],
-                "description": ["type": "string", "description": "Brief description of the item(s) purchased"],
-            ],
-            "required": ["date", "merchant", "total_cost", "description"],
-            "additionalProperties": false,
-        ]
-    }
-
-    private static func receiptsSchema() -> [String: Any] {
-        [
-            "type": "object",
-            "properties": ["receipts": ["type": "array", "items": receiptFieldsSchema()]],
-            "required": ["receipts"],
-            "additionalProperties": false,
-        ]
+        return try ReceiptExtraction.decodeReceipts(fromJSONText: text)
     }
 }
 
@@ -163,13 +77,4 @@ struct MessagesAPIResponse: Decodable {
         let text: String?
     }
     let content: [ContentBlock]
-}
-
-struct ExtractedReceiptsResponse: Decodable {
-    let receipts: [ExtractedReceipt]
-}
-
-struct AnthropicErrorBody: Decodable {
-    struct ErrorDetail: Decodable { let message: String }
-    let error: ErrorDetail
 }

@@ -163,3 +163,21 @@ export async function deleteGroup(name) {
     throw err;
   }
 }
+
+// OCR provider/model preference (Settings → Receipt Scanning). API keys
+// stay in backend env vars — the response only says whether each is set.
+export async function getOcrSettings() {
+  const res = await fetch('/api/settings/ocr');
+  if (!res.ok) throw new Error(await parseErrorResponse(res, 'Failed to load scanning settings'));
+  return res.json();
+}
+
+export async function updateOcrSettings(changes) {
+  const res = await fetch('/api/settings/ocr', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(changes),
+  });
+  if (!res.ok) throw new Error(await parseErrorResponse(res, 'Failed to save scanning settings'));
+  return res.json();
+}

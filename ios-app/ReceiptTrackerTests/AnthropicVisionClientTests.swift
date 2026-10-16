@@ -2,15 +2,10 @@ import XCTest
 @testable import ReceiptTracker
 
 final class AnthropicVisionClientTests: XCTestCase {
-    override func tearDown() {
-        APIKeyStore.delete()
-        super.tearDown()
-    }
-
     // MARK: - Request shape (must match backend/src/services/ocrService.js exactly)
 
     func testRequestBodyMatchesBackendShape() throws {
-        let body = AnthropicVisionClient.requestBody(images: [Data("fake-image".utf8)], mediaType: "image/jpeg")
+        let body = AnthropicVisionClient.requestBody(images: [Data("fake-image".utf8)], mediaType: "image/jpeg", model: "claude-opus-4-8")
 
         XCTAssertEqual(body["model"] as? String, "claude-opus-4-8")
         XCTAssertEqual(body["max_tokens"] as? Int, 4096)
@@ -50,7 +45,7 @@ final class AnthropicVisionClientTests: XCTestCase {
     /// order, followed by exactly one trailing text block.
     func testRequestBodyWithMultipleImagesIncludesOneBlockPerImage() throws {
         let images = [Data("page-1".utf8), Data("page-2".utf8), Data("page-3".utf8)]
-        let body = AnthropicVisionClient.requestBody(images: images, mediaType: "image/jpeg")
+        let body = AnthropicVisionClient.requestBody(images: images, mediaType: "image/jpeg", model: "claude-opus-4-8")
 
         let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
         let content = try XCTUnwrap(messages[0]["content"] as? [[String: Any]])
@@ -120,23 +115,12 @@ final class AnthropicVisionClientTests: XCTestCase {
         }
     }
 
-    func testExtractReceiptsThrowsMissingAPIKeyWhenNoneStored() async throws {
-        APIKeyStore.delete()
-        do {
-            _ = try await AnthropicVisionClient.extractReceipts(images: [Data()], mediaType: "image/jpeg")
-            XCTFail("Expected missingAPIKey error")
-        } catch OCRError.missingAPIKey {
-            // expected
-        }
-    }
-
-    func testExtractReceiptsThrowsInvalidResponseForEmptyImages() async throws {
-        do {
-            _ = try await AnthropicVisionClient.extractReceipts(images: [], mediaType: "image/jpeg")
-            XCTFail("Expected invalidResponse error")
-        } catch OCRError.invalidResponse {
-            // expected
-        }
+    func testMakeRequestSetsAnthropicHeaders() throws {
+        let request = try AnthropicVisionClient.makeRequest(images: [Data("x".utf8)], mediaType: "image/jpeg", model: "m", apiKey: "sk-ant-test")
+        XCTAssertEqual(request.url, AnthropicVisionClient.endpoint)
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "x-api-key"), "sk-ant-test")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "anthropic-version"), "2023-06-01")
     }
 
     // MARK: - Helpers

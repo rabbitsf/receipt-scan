@@ -9,6 +9,8 @@ import {
   createGroup,
   renameGroup,
   deleteGroup,
+  getOcrSettings,
+  updateOcrSettings,
 } from '../api.js';
 
 // Mirrors the iOS Settings screen: create/rename/delete Category and Group
@@ -28,6 +30,58 @@ export default function SettingsView({ onDone }) {
   const [renamingGroup, setRenamingGroup] = useState(null);
   const [renameGroupText, setRenameGroupText] = useState('');
 
+  const [ocrSettings, setOcrSettings] = useState(null);
+  const [modelText, setModelText] = useState('');
+  const [ocrStatus, setOcrStatus] = useState(null);
+  const [savingOcr, setSavingOcr] = useState(false);
+
+  function applyOcrSettings(settings) {
+    setOcrSettings(settings);
+    setModelText(settings.providers[settings.provider].model);
+  }
+
+  function loadOcrSettings() {
+    getOcrSettings()
+      .then(applyOcrSettings)
+      .catch((err) => setError(err.message));
+  }
+
+  // Switch the UI to the new provider immediately, and keep the row
+  // disabled until the server confirms — otherwise a quick model edit + Save
+  // could land on the previous provider, or be wiped by the late response.
+  async function handleProviderChange(e) {
+    const provider = e.target.value;
+    setError(null);
+    setOcrStatus(null);
+    applyOcrSettings({ ...ocrSettings, provider });
+    setSavingOcr(true);
+    try {
+      applyOcrSettings(await updateOcrSettings({ provider }));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingOcr(false);
+    }
+  }
+
+  async function handleSaveModel(e) {
+    e.preventDefault();
+    setError(null);
+    setSavingOcr(true);
+    try {
+      applyOcrSettings(
+        await updateOcrSettings({
+          models: { [ocrSettings.provider]: modelText },
+        }),
+      );
+      setOcrStatus('Saved.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingOcr(false);
+    }
+  }
+
   function loadCategories() {
     getCategories()
       .then(setCategories)
@@ -41,6 +95,7 @@ export default function SettingsView({ onDone }) {
   }
 
   useEffect(() => {
+    loadOcrSettings();
     loadCategories();
     loadGroups();
   }, []);
@@ -154,6 +209,53 @@ export default function SettingsView({ onDone }) {
       <h2>Settings</h2>
 
       {error && <p className="form-error">{error}</p>}
+
+      {ocrSettings && (
+        <div className="settings-section">
+          <h3>Receipt Scanning</h3>
+          <p className="settings-section-hint">
+            Choose which AI reads your receipt photos. API keys live in <code>backend/.env</code>, not here.
+            Leave the model blank to use the default.
+          </p>
+          <form className="settings-inline-form" onSubmit={handleSaveModel}>
+            <fieldset className="settings-inline-fieldset" disabled={savingOcr}>
+              <select
+                aria-label="Scanning provider"
+                value={ocrSettings.provider}
+                onChange={handleProviderChange}
+              >
+                {Object.entries(ocrSettings.providers).map(([id, p]) => (
+                  <option key={id} value={id}>
+                    {p.displayName}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                aria-label="Model"
+                placeholder={ocrSettings.providers[ocrSettings.provider].defaultModel}
+                value={modelText}
+                onChange={(e) => {
+                  setModelText(e.target.value);
+                  setOcrStatus(null);
+                }}
+              />
+              <button type="submit">Save</button>
+            </fieldset>
+          </form>
+          {ocrSettings.providers[ocrSettings.provider].configured ? (
+            <p className="settings-section-hint settings-ocr-status">
+              {ocrStatus || `${ocrSettings.providers[ocrSettings.provider].displayName} API key found.`}
+            </p>
+          ) : (
+            <p className="form-error settings-ocr-status">
+              No {ocrSettings.providers[ocrSettings.provider].displayName} API key configured — set{' '}
+              <code>{ocrSettings.providers[ocrSettings.provider].envVar}</code> in <code>backend/.env</code>{' '}
+              and restart the backend. Scanning will fail until then.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="settings-section">
         <h3>Categories</h3>

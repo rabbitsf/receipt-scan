@@ -21,3 +21,6 @@ CLAUDE.md
 
 # stale/superseded, not referenced by any build
 ios-app/ReceiptTracker/Assets.xcassets/AppIcon.appiconset.bak/
+
+# Local API keys for testing — never commit
+api-keys/

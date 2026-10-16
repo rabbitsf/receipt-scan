@@ -1,13 +1,59 @@
-import Anthropic from '@anthropic-ai/sdk';
 import fs from 'node:fs';
 import path from 'node:path';
+import * as anthropic from './ocrProviders/anthropic.js';
+import * as openai from './ocrProviders/openai.js';
+import * as gemini from './ocrProviders/gemini.js';
+import { getSetting, setSetting, deleteSetting } from './settingsRepository.js';
 
-let client;
-function getClient() {
-  if (!client) {
-    client = new Anthropic();
+// The OCR providers selectable in Settings. Each adapter in `ocrProviders/`
+// owns only its wire format; prompt, schema and response parsing below are
+// shared so switching providers never changes what gets extracted. Mirrors
+// iOS's `OCRProvider.swift`. API keys come from env vars only (never the DB).
+export const OCR_PROVIDERS = {
+  anthropic: { displayName: 'Claude', defaultModel: 'claude-opus-4-8', envVar: 'ANTHROPIC_API_KEY', adapter: anthropic },
+  openai: { displayName: 'OpenAI', defaultModel: 'gpt-6.1-sol', envVar: 'OPENAI_API_KEY', adapter: openai },
+  gemini: { displayName: 'Gemini', defaultModel: 'gemini-3.8-flash', envVar: 'GEMINI_API_KEY', adapter: gemini },
+};
+const DEFAULT_PROVIDER = 'anthropic';
+const PROVIDER_SETTING = 'ocr.provider';
+const modelSettingKey = (provider) => `ocr.model.${provider}`;
+
+// `models` holds only the user's overrides ('' = use the default), so the
+// UI can show the default as a placeholder. `configured` reports whether each
+// provider's env var is set — never the key itself.
+export function getOcrSettings() {
+  const stored = getSetting(PROVIDER_SETTING);
+  const provider = OCR_PROVIDERS[stored] ? stored : DEFAULT_PROVIDER;
+  const providers = Object.fromEntries(
+    Object.entries(OCR_PROVIDERS).map(([id, p]) => [
+      id,
+      {
+        displayName: p.displayName,
+        defaultModel: p.defaultModel,
+        model: getSetting(modelSettingKey(id)) || '',
+        envVar: p.envVar,
+        configured: Boolean(process.env[p.envVar]),
+      },
+    ]),
+  );
+  return { provider, providers };
+}
+
+// `models` is optional and partial: { openai: 'gpt-x' } overrides one
+// provider; a blank string clears that override back to the default.
+export function updateOcrSettings({ provider, models = {} }) {
+  if (provider !== undefined) {
+    if (!OCR_PROVIDERS[provider]) throw new Error(`Unknown OCR provider: ${provider}`);
+    setSetting(PROVIDER_SETTING, provider);
   }
-  return client;
+  for (const [id, model] of Object.entries(models)) {
+    if (!OCR_PROVIDERS[id]) throw new Error(`Unknown OCR provider: ${id}`);
+    if (typeof model !== 'string') throw new Error('Model must be a string');
+    const trimmed = model.trim();
+    if (trimmed) setSetting(modelSettingKey(id), trimmed);
+    else deleteSetting(modelSettingKey(id));
+  }
+  return getOcrSettings();
 }
 
 // `category` and `note` (v1.5) are intentionally excluded here — both are
@@ -33,6 +79,9 @@ const RECEIPTS_SCHEMA = {
   additionalProperties: false,
 };
 
+const EXTRACTION_PROMPT =
+  'These images may contain one or more separate, distinct receipts (a multi-page receipt spans multiple images; unrelated receipts are separate). Identify EACH separate receipt and extract its date, merchant name, total cost, and a brief description of the item(s) purchased as its own entry. Do not merge multiple receipts into one entry. If there is only one receipt, return a single entry. Give your best reasonable guess for any field that is not perfectly clear.';
+
 const MEDIA_TYPES = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
@@ -42,10 +91,11 @@ const MEDIA_TYPES = {
   '.heif': 'image/heif',
 };
 
-// Accepts either a single absolute image path (string) or an array of 1..N
-// absolute paths (e.g. rendered pages of an imported PDF) — one `image`
-// content block per path, same request. Mirrors iOS's
-// `AnthropicVisionClient.extractReceipts(images:)` unification: ONE
+// THE entry point for receipt OCR, whichever provider is selected in
+// Settings. Accepts either a single absolute image path (string) or an array
+// of 1..N absolute paths (e.g. rendered pages of an imported PDF) — all sent
+// as images in one request. Mirrors iOS's
+// `ReceiptExtractor.extractReceipts(images:)` unification: ONE
 // canonical function for both the single-photo and multi-page-PDF paths,
 // not two parallel implementations. The prompt/schema are unchanged and
 // already array-returning — the model decides whether the supplied pages
@@ -58,42 +108,34 @@ export async function extractReceiptFields(imageAbsolutePathOrPaths) {
     throw new Error('At least one image path is required for OCR extraction');
   }
 
-  const imageBlocks = imagePaths.map((imageAbsolutePath) => {
+  const images = imagePaths.map((imageAbsolutePath) => {
     const ext = path.extname(imageAbsolutePath).toLowerCase();
     const mediaType = MEDIA_TYPES[ext];
     if (!mediaType) {
       throw new Error(`Unsupported image type for OCR: ${ext}`);
     }
-    const imageBase64 = fs.readFileSync(imageAbsolutePath).toString('base64');
-    return { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } };
+    return { mediaType, base64: fs.readFileSync(imageAbsolutePath).toString('base64') };
   });
 
-  const response = await getClient().messages.create({
-    model: 'claude-opus-4-8',
-    max_tokens: 4096,
-    output_config: { format: { type: 'json_schema', schema: RECEIPTS_SCHEMA } },
-    messages: [
-      {
-        role: 'user',
-        content: [
-          ...imageBlocks,
-          {
-            type: 'text',
-            text: 'These images may contain one or more separate, distinct receipts (a multi-page receipt spans multiple images; unrelated receipts are separate). Identify EACH separate receipt and extract its date, merchant name, total cost, and a brief description of the item(s) purchased as its own entry. Do not merge multiple receipts into one entry. If there is only one receipt, return a single entry. Give your best reasonable guess for any field that is not perfectly clear.',
-          },
-        ],
-      },
-    ],
-  });
+  const { provider, providers } = getOcrSettings();
+  const selected = providers[provider];
+  if (!selected.configured) {
+    throw new Error(`No ${selected.displayName} API key configured — set ${selected.envVar} in backend/.env`);
+  }
 
-  const textBlock = response.content.find((block) => block.type === 'text');
-  if (!textBlock) {
+  const text = await OCR_PROVIDERS[provider].adapter.extractJsonText({
+    images,
+    prompt: EXTRACTION_PROMPT,
+    schema: RECEIPTS_SCHEMA,
+    model: selected.model || selected.defaultModel,
+  });
+  if (!text) {
     throw new Error('OCR extraction returned no text content');
   }
 
   let parsed;
   try {
-    parsed = JSON.parse(textBlock.text);
+    parsed = JSON.parse(text);
   } catch {
     throw new Error('OCR extraction returned invalid JSON');
   }

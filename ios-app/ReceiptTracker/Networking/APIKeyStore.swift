@@ -12,22 +12,33 @@ enum KeychainError: LocalizedError {
     }
 }
 
-/// Minimal Keychain wrapper for the user's own Anthropic API key. Stored
-/// on-device only — never logged, never sent anywhere except directly to
-/// `api.anthropic.com` from `AnthropicVisionClient`. Standalone architecture
-/// means there's no backend to hold this secret server-side (see
-/// docs/plans/2026-07-23-ios-app.md's pivot section for why).
+/// Minimal Keychain wrapper for the user's own OCR provider API keys — one
+/// independent entry per `OCRProvider`, so switching providers in Settings
+/// never loses a key. Stored on-device only — never logged, never sent
+/// anywhere except directly to that provider's API host by
+/// `ReceiptExtractor`. Standalone architecture means there's no backend to
+/// hold these secrets server-side (see docs/plans/2026-07-23-ios-app.md's
+/// pivot section for why).
 enum APIKeyStore {
-    private static let service = "com.webreceipt.ReceiptTracker.anthropicAPIKey"
-    private static let account = "anthropicAPIKey"
+    /// The Anthropic entry keeps the exact service/account it had before
+    /// multi-provider support, so existing installs keep their saved key.
+    private static func identifiers(for provider: OCRProvider) -> (service: String, account: String) {
+        switch provider {
+        case .anthropic:
+            return ("com.webreceipt.ReceiptTracker.anthropicAPIKey", "anthropicAPIKey")
+        case .openai, .gemini:
+            return ("com.webreceipt.ReceiptTracker.\(provider.rawValue)APIKey", "\(provider.rawValue)APIKey")
+        }
+    }
 
-    static func save(_ key: String) throws {
-        delete()
+    static func save(_ key: String, for provider: OCRProvider) throws {
+        delete(for: provider)
         guard let data = key.data(using: .utf8) else { return }
+        let ids = identifiers(for: provider)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
+            kSecAttrService as String: ids.service,
+            kSecAttrAccount as String: ids.account,
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
         ]
@@ -35,11 +46,12 @@ enum APIKeyStore {
         guard status == errSecSuccess else { throw KeychainError.unexpectedStatus(status) }
     }
 
-    static func load() -> String? {
+    static func load(for provider: OCRProvider) -> String? {
+        let ids = identifiers(for: provider)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
+            kSecAttrService as String: ids.service,
+            kSecAttrAccount as String: ids.account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
@@ -50,11 +62,12 @@ enum APIKeyStore {
     }
 
     @discardableResult
-    static func delete() -> Bool {
+    static func delete(for provider: OCRProvider) -> Bool {
+        let ids = identifiers(for: provider)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
+            kSecAttrService as String: ids.service,
+            kSecAttrAccount as String: ids.account,
         ]
         let status = SecItemDelete(query as CFDictionary)
         return status == errSecSuccess || status == errSecItemNotFound

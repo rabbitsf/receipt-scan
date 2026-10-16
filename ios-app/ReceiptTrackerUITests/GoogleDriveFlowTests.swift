@@ -1,18 +1,21 @@
 import XCTest
 
-/// Covers what's testable WITHOUT live Google credentials: `GIDClientID` in
-/// this checked-out project is a placeholder (see `project.yml`), so
-/// `GoogleDriveAuth.signIn` always fails fast with `.missingClientID`
-/// before any network/UI presentation — that's a real, exercisable code
-/// path, not a mock. The actual OAuth flow + live Drive upload need a
-/// manual smoke test once a real Client ID is configured (see the plan
-/// file / setup instructions).
+/// Covers what's testable WITHOUT signing in to a real Google account.
+/// `project.yml` carries the real `GIDClientID`, so tapping Connect starts
+/// the genuine Google sign-in — iOS first asks permission via a system
+/// "Wants to Use google.com to Sign In" alert. These tests stop at that
+/// alert (Cancel) rather than driving Google's web sign-in, which can't be
+/// automated reliably and would need real credentials. The full OAuth flow
+/// and a live Drive upload are verified manually on a real device.
 final class GoogleDriveFlowTests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
 
-    func testConnectToGoogleDriveShowsNotConfiguredMessageWithPlaceholderClientID() throws {
+    /// Tapping Connect hands off to Google sign-in (the system permission
+    /// alert appears); cancelling it leaves the section disconnected, with
+    /// Connect offered again and a status message explaining what happened.
+    func testConnectToGoogleDriveStartsSignInAndCancelLeavesDisconnected() throws {
         let app = XCUIApplication()
         app.terminate()
         app.launch()
@@ -22,14 +25,21 @@ final class GoogleDriveFlowTests: XCTestCase {
         XCTAssertTrue(connectButton.waitForExistence(timeout: 5))
         connectButton.tap()
 
-        let status = app.staticTexts["driveStatusMessage"]
-        XCTAssertTrue(status.waitForExistence(timeout: 5))
-        XCTAssertTrue(status.label.contains("not configured"), "Expected a not-configured message, got: \(status.label)")
+        // The permission alert belongs to SpringBoard, not the app.
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let signInAlert = springboard.alerts.firstMatch
+        XCTAssertTrue(signInAlert.waitForExistence(timeout: 10), "Expected Google sign-in to start (system sign-in alert)")
+        XCTAssertTrue(signInAlert.label.contains("Sign In"), "Unexpected alert: \(signInAlert.label)")
+        // A plain `.tap()` on this SpringBoard alert's buttons is silently
+        // ignored (the alert stays up and sign-in never ends); tapping the
+        // button's coordinate does register.
+        signInAlert.buttons["Cancel"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
 
-        // Connect button should still be offered — sign-in never actually
-        // succeeded/started, so the section shouldn't have flipped to the
-        // "Disconnect" (connected) state.
-        XCTAssertTrue(app.buttons["connectDriveButton"].exists)
+        let status = app.staticTexts["driveStatusMessage"]
+        XCTAssertTrue(status.waitForExistence(timeout: 10))
+        XCTAssertTrue(status.label.localizedCaseInsensitiveContains("cancel"), "Expected a cancelled message, got: \(status.label)")
+        XCTAssertTrue(connectButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(connectButton.isEnabled, "Connect should be offered again after cancelling")
         XCTAssertFalse(app.buttons["disconnectDriveButton"].exists)
     }
 

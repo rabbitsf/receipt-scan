@@ -361,7 +361,7 @@ struct ReceiptFormView: View {
     /// Renders every page of the imported PDF (up to `PDFPageRenderer.maxPages`)
     /// and sends them all to OCR together — the model decides whether they're
     /// one receipt spanning multiple pages or several separate receipts (see
-    /// `AnthropicVisionClient.extractReceipts`'s doc comment). Only the FIRST
+    /// `AnthropicVisionClient`'s doc comment). Only the FIRST
     /// page becomes the receipt's stored/displayed photo — this app has no
     /// concept of multiple photos per receipt, and every already-queued
     /// receipt from one photo already shares that one photo today (see
@@ -404,7 +404,7 @@ struct ReceiptFormView: View {
         defer { isExtracting = false }
 
         do {
-            let receipts = try await AnthropicVisionClient.extractReceipts(images: images, mediaType: "image/jpeg")
+            let receipts = try await ReceiptExtractor.extractReceipts(images: images, mediaType: "image/jpeg")
             guard let first = receipts.first else {
                 extractNotice = "No receipt details were detected — please check the fields below."
                 return

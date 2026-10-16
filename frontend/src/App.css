@@ -469,10 +469,34 @@ button.secondary {
 
 .settings-inline-form input {
   flex: 1;
+  min-width: 0;
   padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: inherit;
   font-size: 14px;
+}
+
+.settings-inline-form select {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: inherit;
+  font-size: 14px;
+}
+
+.settings-inline-fieldset {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.settings-ocr-status {
+  margin: 8px 0 0;
 }

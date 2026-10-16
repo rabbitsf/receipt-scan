@@ -51,3 +51,14 @@ db.exec(`
     UNIQUE (kind, name)
   );
 `);
+
+// Small key/value store for app-wide preferences that aren't receipt data —
+// currently the OCR provider + per-provider model override (see
+// `services/ocrService.js`). API keys are NEVER stored here; they stay in
+// backend env vars (`.env`).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+`);

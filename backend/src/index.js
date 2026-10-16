@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { db } from './db/index.js';
 import receiptsRouter from './routes/receipts.js';
+import settingsRouter from './routes/settings.js';
 
 dotenv.config();
 
@@ -18,6 +19,7 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use('/api/receipts', receiptsRouter);
+app.use('/api/settings', settingsRouter);
 
 app.listen(PORT, () => {
   console.log(`Receipt tracker backend listening on http://localhost:${PORT}`);

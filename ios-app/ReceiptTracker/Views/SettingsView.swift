@@ -9,8 +9,10 @@ struct SettingsView: View {
     @Query(sort: \CustomCategory.name) private var customCategories: [CustomCategory]
     @Query(sort: \CustomGroup.name) private var customGroups: [CustomGroup]
 
-    @State private var apiKey: String = APIKeyStore.load() ?? ""
-    @State private var hasStoredKey: Bool = APIKeyStore.load() != nil
+    @State private var provider: OCRProvider = OCRSettings.selectedProvider()
+    @State private var apiKey: String = APIKeyStore.load(for: OCRSettings.selectedProvider()) ?? ""
+    @State private var hasStoredKey: Bool = APIKeyStore.load(for: OCRSettings.selectedProvider()) != nil
+    @State private var modelText: String = OCRSettings.modelOverride(for: OCRSettings.selectedProvider()) ?? ""
     @State private var statusMessage: String?
 
     @State private var isDriveConnected = GoogleDriveAuth.isSignedIn
@@ -50,14 +52,32 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    SecureField("sk-ant-...", text: $apiKey)
+                    Picker("Provider", selection: $provider) {
+                        ForEach(OCRProvider.allCases) { provider in
+                            Text(provider.displayName).tag(provider)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("ocrProviderPicker")
+                    SecureField(provider.keyPlaceholder, text: $apiKey)
                         .accessibilityIdentifier("apiKeyField")
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                    TextField(provider.defaultModel, text: $modelText)
+                        .accessibilityIdentifier("ocrModelField")
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                 } header: {
-                    Text("Anthropic API Key")
+                    Text("Receipt Scanning")
                 } footer: {
-                    Text("Used only to scan receipt photos directly from this device via Claude's Vision API. Stored securely in the iOS Keychain and never sent anywhere except api.anthropic.com. Get a key at console.anthropic.com.")
+                    Text("Choose which AI scans your receipt photos, directly from this device. Each provider keeps its own \(provider.displayName) API key, stored securely in the iOS Keychain and never sent anywhere except \(provider.apiHost). Get a key at \(provider.keyConsoleHint). Leave the model blank to use \(provider.defaultModel).")
+                }
+                .onChange(of: provider) { _, newProvider in
+                    OCRSettings.setSelectedProvider(newProvider)
+                    apiKey = APIKeyStore.load(for: newProvider) ?? ""
+                    hasStoredKey = APIKeyStore.load(for: newProvider) != nil
+                    modelText = OCRSettings.modelOverride(for: newProvider) ?? ""
+                    statusMessage = nil
                 }
 
                 if let statusMessage {
@@ -68,7 +88,7 @@ struct SettingsView: View {
 
                 if hasStoredKey {
                     Button("Remove Key", role: .destructive) {
-                        APIKeyStore.delete()
+                        APIKeyStore.delete(for: provider)
                         apiKey = ""
                         hasStoredKey = false
                         statusMessage = "Key removed."
@@ -167,7 +187,8 @@ struct SettingsView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         do {
-                            try APIKeyStore.save(apiKey)
+                            try APIKeyStore.save(apiKey, for: provider)
+                            OCRSettings.setModelOverride(modelText, for: provider)
                             hasStoredKey = true
                             statusMessage = "Saved."
                         } catch {

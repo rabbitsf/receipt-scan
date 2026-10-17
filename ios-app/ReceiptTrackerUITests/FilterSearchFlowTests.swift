@@ -9,7 +9,7 @@ final class FilterSearchFlowTests: XCTestCase {
     /// for one of them — confirms the search bar actually filters the list
     /// down rather than just cosmetically existing.
     func testSearchFiltersListToMatchingMerchant() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.terminate()
         app.launch()
 
@@ -35,7 +35,7 @@ final class FilterSearchFlowTests: XCTestCase {
     /// than today's), confirms it disappears with the "no receipts match"
     /// message, then clears filters and confirms it reappears.
     func testYearFilterExcludesAndClearFiltersRestores() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.terminate()
         app.launch()
 

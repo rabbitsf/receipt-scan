@@ -9,7 +9,7 @@ final class CategoryNoteFlowTests: XCTestCase {
     /// are pre-filled correctly when reopening it for edit (proves they
     /// were actually persisted to the model, not just cosmetic form state).
     func testPredefinedCategoryAndNotePersistThroughEdit() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.terminate()
         app.launch()
 
@@ -58,7 +58,7 @@ final class CategoryNoteFlowTests: XCTestCase {
     /// confirm it's persisted and that the category picker/filter now
     /// offers it as a selectable option elsewhere (merged in-use category).
     func testCustomCategoryPersistsAndAppearsInFilterOptions() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.terminate()
         app.launch()
 

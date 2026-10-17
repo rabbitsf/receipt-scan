@@ -11,6 +11,7 @@ struct ReceiptListView: View {
     @State private var editingReceipt: Receipt?
     @State private var viewingReceipt: Receipt?
     @State private var showingSettings = false
+    @State private var showingMissingKeyWarning = false
     @State private var showingFilters = false
     @State private var showingDashboard = false
 
@@ -413,6 +414,17 @@ struct ReceiptListView: View {
                         )
                     )
                 }
+            }
+            .task {
+                // Root view, so this runs once per app launch.
+                showingMissingKeyWarning = OCRSettings.shouldShowMissingKeyWarning()
+            }
+            .alert("No API Key", isPresented: $showingMissingKeyWarning) {
+                Button("Add Key") { showingSettings = true }
+                Button("Don't Show Again") { OCRSettings.dismissKeyWarning() }
+                Button("Not Now", role: .cancel) {}
+            } message: {
+                Text("Scanning receipt photos needs an API key from an AI provider (\(OCRProvider.allCases.map(\.displayName).formatted(.list(type: .or)))). Choose one and add its key in Settings. You can still add receipts by hand.")
             }
             .alert("Google Drive", isPresented: Binding(
                 get: { driveUploadSummary != nil },

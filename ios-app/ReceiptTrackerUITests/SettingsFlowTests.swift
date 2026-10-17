@@ -10,7 +10,7 @@ final class SettingsFlowTests: XCTestCase {
     /// it round-trips through the real Keychain across process lifetimes,
     /// not just in-memory state.
     func testAPIKeySurvivesAppRelaunch() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.launch()
 
         let settingsButton = app.buttons["settingsButton"]
@@ -49,7 +49,7 @@ final class SettingsFlowTests: XCTestCase {
     /// replace the Claude one, and switching back shows Claude's key again.
     /// The selected provider also survives a relaunch.
     func testSwitchingProvidersKeepsSeparateKeys() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.launch()
 
         app.buttons["settingsButton"].tap()

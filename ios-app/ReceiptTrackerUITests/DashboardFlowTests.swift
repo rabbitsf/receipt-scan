@@ -9,7 +9,7 @@ final class DashboardFlowTests: XCTestCase {
     /// open the Dashboard, and confirm the year total and category
     /// breakdown actually reflect it — not just that the screen opens.
     func testDashboardReflectsAddedReceipt() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.terminate()
         app.launch()
 
@@ -46,7 +46,7 @@ final class DashboardFlowTests: XCTestCase {
     /// a year with no data and confirm the monthly breakdown all reads
     /// $0.00 (rather than being frozen on the previous year's numbers).
     func testChangingDashboardYearUpdatesTotals() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.terminate()
         app.launch()
 

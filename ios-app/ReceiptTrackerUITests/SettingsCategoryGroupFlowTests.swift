@@ -56,7 +56,7 @@ final class SettingsCategoryGroupFlowTests: XCTestCase {
     }
 
     func testCategoryAddedInSettingsAppearsInReceiptFormPicker() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.terminate()
         app.launch()
 
@@ -79,7 +79,7 @@ final class SettingsCategoryGroupFlowTests: XCTestCase {
     }
 
     func testGroupAddedInSettingsAppearsInReceiptFormPicker() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.terminate()
         app.launch()
 
@@ -99,7 +99,7 @@ final class SettingsCategoryGroupFlowTests: XCTestCase {
     }
 
     func testDeletingCategoryIsBlockedWhenInUseAndSucceedsWhenUnused() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.terminate()
         app.launch()
 
@@ -157,7 +157,7 @@ final class SettingsCategoryGroupFlowTests: XCTestCase {
     }
 
     func testRenamingCategoryInSettingsCascadesToExistingReceipt() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.terminate()
         app.launch()
 

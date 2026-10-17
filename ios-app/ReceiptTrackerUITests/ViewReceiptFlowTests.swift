@@ -10,7 +10,7 @@ final class ViewReceiptFlowTests: XCTestCase {
     func testReceiptWithoutPhotoHasNoViewAction() throws {
         let merchantName = "NoPhoto Merchant \(UUID().uuidString.prefix(8))"
 
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.launch()
 
         addReceipt(app, merchant: merchantName, totalCost: "3.50")
@@ -30,7 +30,7 @@ final class ViewReceiptFlowTests: XCTestCase {
     func testViewReceiptShowsFullSizeImage() throws {
         let merchantName = "PhotoTest Merchant \(UUID().uuidString.prefix(8))"
 
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.launchEnvironment["UITEST_SEED_PHOTO_MERCHANT"] = merchantName
         app.launch()
 
@@ -72,7 +72,7 @@ final class ViewReceiptFlowTests: XCTestCase {
     func testDoubleTapZoomsFullSizeImage() throws {
         let merchantName = "PinchTest Merchant \(UUID().uuidString.prefix(8))"
 
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.launchEnvironment["UITEST_SEED_PHOTO_MERCHANT"] = merchantName
         app.launch()
 

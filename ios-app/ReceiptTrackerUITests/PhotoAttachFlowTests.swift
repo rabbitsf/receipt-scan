@@ -26,7 +26,7 @@ final class PhotoAttachFlowTests: XCTestCase {
     /// (fast, deterministic unit test) and the user's own real-device,
     /// real-photo, real-API-key manual verification (2026-07-23).
     func testPhotoSourceDialogOffersLibraryOption() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         // Ensure a clean process, not a re-foregrounded one with leftover
         // sheet/dialog state from a previous test in this run.
         app.terminate()
@@ -50,7 +50,7 @@ final class PhotoAttachFlowTests: XCTestCase {
     /// scanned" warning alert are covered by `PDFPageRendererTests.swift`
     /// (unit) and manual real-device verification instead.
     func testPhotoSourceDialogOffersImportPDFOption() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.terminate()
         app.launch()
 

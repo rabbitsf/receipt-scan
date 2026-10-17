@@ -65,6 +65,7 @@ enum OCRProvider: String, CaseIterable, Identifiable {
 /// Keychain via `APIKeyStore` instead.
 enum OCRSettings {
     private static let providerKey = "ocrProvider"
+    private static let keyWarningDismissedKey = "ocrKeyWarningDismissed"
     private static func modelKey(for provider: OCRProvider) -> String { "ocrModel.\(provider.rawValue)" }
 
     /// Defaults to Claude, so existing installs keep scanning exactly as
@@ -94,5 +95,24 @@ enum OCRSettings {
 
     static func effectiveModel(for provider: OCRProvider, defaults: UserDefaults = .standard) -> String {
         modelOverride(for: provider, defaults: defaults) ?? provider.defaultModel
+    }
+
+    /// Set by the launch warning's "Don't Show Again"; permanent.
+    static func keyWarningDismissed(defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: keyWarningDismissedKey)
+    }
+
+    static func dismissKeyWarning(defaults: UserDefaults = .standard) {
+        defaults.set(true, forKey: keyWarningDismissedKey)
+    }
+
+    /// Whether to show the "no API key" popup at launch: the selected
+    /// provider has no saved key and the user hasn't chosen Don't Show
+    /// Again. The app still works without a key — only scanning needs one.
+    static func shouldShowMissingKeyWarning(
+        defaults: UserDefaults = .standard,
+        hasKey: (OCRProvider) -> Bool = { APIKeyStore.load(for: $0)?.isEmpty == false }
+    ) -> Bool {
+        !keyWarningDismissed(defaults: defaults) && !hasKey(selectedProvider(defaults: defaults))
     }
 }

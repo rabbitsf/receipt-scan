@@ -4,6 +4,7 @@ import ReceiptFormScreen from './components/ReceiptFormScreen.jsx';
 import ReceiptList from './components/ReceiptList.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import SettingsView from './components/SettingsView.jsx';
+import MissingKeyWarning from './components/MissingKeyWarning.jsx';
 import './App.css';
 
 function App() {
@@ -39,6 +40,8 @@ function App() {
 
         {view.name === 'settings' && <SettingsView onDone={goToList} />}
       </main>
+
+      <MissingKeyWarning onAddKey={() => setView({ name: 'settings' })} />
     </div>
   );
 }

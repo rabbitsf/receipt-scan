@@ -11,7 +11,7 @@ final class AddReceiptFlowTests: XCTestCase {
     func testAddReceiptAppearsInList() throws {
         let merchantName = "UITest Verify Merchant"
 
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.launch()
 
         let addButton = app.buttons["addReceiptButton"]

@@ -8,12 +8,12 @@ router.get('/ocr', (req, res) => {
 });
 
 router.put('/ocr', (req, res) => {
-  const { provider, models } = req.body || {};
+  const { provider, models, keyWarningDismissed } = req.body || {};
   if (models !== undefined && (typeof models !== 'object' || models === null || Array.isArray(models))) {
     return res.status(400).json({ error: 'models must be an object of provider → model name' });
   }
   try {
-    res.json(updateOcrSettings({ provider, models }));
+    res.json(updateOcrSettings({ provider, models, keyWarningDismissed }));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

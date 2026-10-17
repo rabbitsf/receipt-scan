@@ -11,7 +11,7 @@ final class GroupFlowTests: XCTestCase {
     /// Filter sheet's group picker — mirrors
     /// `CategoryNoteFlowTests.testCustomCategoryPersistsAndAppearsInFilterOptions`.
     func testGroupPersistsAndAppearsInFilterOptions() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.terminate()
         app.launch()
 
@@ -62,7 +62,7 @@ final class GroupFlowTests: XCTestCase {
     /// one specific group via the Filter sheet, confirm the list scopes to
     /// only the matching receipt.
     func testGroupFilterScopesListToMatchingReceipts() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.terminate()
         app.launch()
 

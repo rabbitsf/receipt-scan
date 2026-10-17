@@ -1,0 +1,14 @@
+import XCTest
+
+extension XCUIApplication {
+    /// The app under test, launched with the "no API key" launch popup
+    /// turned off (via the UserDefaults argument domain, which overrides the
+    /// stored value without changing it). Every UI test starts without a
+    /// saved key, so the popup would otherwise cover the screen. Tests of
+    /// the popup itself (`MissingKeyWarningFlowTests`) build their own app.
+    static func receiptTracker() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments += ["-ocrKeyWarningDismissed", "YES"]
+        return app
+    }
+}

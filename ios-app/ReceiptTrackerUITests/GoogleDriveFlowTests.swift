@@ -16,7 +16,7 @@ final class GoogleDriveFlowTests: XCTestCase {
     /// alert appears); cancelling it leaves the section disconnected, with
     /// Connect offered again and a status message explaining what happened.
     func testConnectToGoogleDriveStartsSignInAndCancelLeavesDisconnected() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.terminate()
         app.launch()
 
@@ -50,7 +50,7 @@ final class GoogleDriveFlowTests: XCTestCase {
     func testUploadToDriveFromImageViewShowsNotConnectedMessage() throws {
         let merchantName = "DriveUploadTest Merchant \(UUID().uuidString.prefix(8))"
 
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.launchEnvironment["UITEST_SEED_PHOTO_MERCHANT"] = merchantName
         app.launch()
 
@@ -78,7 +78,7 @@ final class GoogleDriveFlowTests: XCTestCase {
     func testBulkUploadFromSelectionShowsNotConnectedAlert() throws {
         let merchantName = "DriveBulkTest Merchant \(UUID().uuidString.prefix(8))"
 
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.terminate()
         app.launch()
 

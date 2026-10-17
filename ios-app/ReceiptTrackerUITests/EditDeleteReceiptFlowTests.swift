@@ -11,7 +11,7 @@ final class EditDeleteReceiptFlowTests: XCTestCase {
         let originalName = "Edit Test Original"
         let updatedName = "Edit Test Updated"
 
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.launch()
 
         addReceipt(app, merchant: originalName, totalCost: "10.00")
@@ -43,7 +43,7 @@ final class EditDeleteReceiptFlowTests: XCTestCase {
         // same on-device store would otherwise make `row` (below) ambiguous.
         let merchantName = "Delete Test Merchant \(UUID().uuidString.prefix(8))"
 
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.launch()
 
         addReceipt(app, merchant: merchantName, totalCost: "5.00")

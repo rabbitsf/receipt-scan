@@ -90,4 +90,29 @@ final class ReceiptExtractorTests: XCTestCase {
         XCTAssertNil(OCRSettings.modelOverride(for: .openai, defaults: defaults))
         XCTAssertEqual(OCRSettings.effectiveModel(for: .openai, defaults: defaults), OCRProvider.openai.defaultModel)
     }
+
+    // MARK: - Missing-key launch warning
+
+    func testMissingKeyWarningShowsWhenSelectedProviderHasNoKey() {
+        XCTAssertTrue(OCRSettings.shouldShowMissingKeyWarning(defaults: defaults, hasKey: { _ in false }))
+    }
+
+    func testMissingKeyWarningHiddenWhenSelectedProviderHasKey() {
+        XCTAssertFalse(OCRSettings.shouldShowMissingKeyWarning(defaults: defaults, hasKey: { _ in true }))
+    }
+
+    /// Only the *selected* provider's key matters — a Claude key doesn't
+    /// help when Gemini is the one that will be used to scan.
+    func testMissingKeyWarningChecksTheSelectedProvider() {
+        OCRSettings.setSelectedProvider(.gemini, defaults: defaults)
+        XCTAssertTrue(OCRSettings.shouldShowMissingKeyWarning(defaults: defaults, hasKey: { $0 == .anthropic }))
+        XCTAssertFalse(OCRSettings.shouldShowMissingKeyWarning(defaults: defaults, hasKey: { $0 == .gemini }))
+    }
+
+    func testDontShowAgainSilencesMissingKeyWarning() {
+        XCTAssertFalse(OCRSettings.keyWarningDismissed(defaults: defaults))
+        OCRSettings.dismissKeyWarning(defaults: defaults)
+        XCTAssertTrue(OCRSettings.keyWarningDismissed(defaults: defaults))
+        XCTAssertFalse(OCRSettings.shouldShowMissingKeyWarning(defaults: defaults, hasKey: { _ in false }))
+    }
 }

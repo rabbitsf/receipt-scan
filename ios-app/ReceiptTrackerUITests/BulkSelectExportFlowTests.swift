@@ -8,7 +8,7 @@ final class BulkSelectExportFlowTests: XCTestCase {
     /// Add two receipts, enter select mode, select one, bulk-delete it,
     /// confirm only that one is gone and the other survives.
     func testBulkSelectAndDeleteRemovesOnlySelectedReceipt() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.terminate()
         app.launch()
 
@@ -44,7 +44,7 @@ final class BulkSelectExportFlowTests: XCTestCase {
     /// reliable check here; the CSV content itself is covered by
     /// `ReceiptCSVExporterTests` (unit, no UI needed).
     func testExportButtonPresentsShareSheet() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.terminate()
         app.launch()
 
@@ -82,7 +82,7 @@ final class BulkSelectExportFlowTests: XCTestCase {
     /// the Filter sheet has no such issue since it's a modal that fully
     /// dismisses back to the normal toolbar on "Done".
     func testSelectAllSelectsAndDeselectsAllFilteredReceipts() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.terminate()
         app.launch()
 
@@ -141,7 +141,7 @@ final class BulkSelectExportFlowTests: XCTestCase {
     /// "3 Selected" shows as the navigation title — the count's new home
     /// after being moved out of the crowded bottom-bar HStack entirely.
     func testSelectingThreeReceiptsShowsCorrectCount() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.receiptTracker()
         app.terminate()
         app.launch()
 

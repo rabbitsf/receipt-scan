@@ -16,11 +16,14 @@ export const OCR_PROVIDERS = {
 };
 const DEFAULT_PROVIDER = 'anthropic';
 const PROVIDER_SETTING = 'ocr.provider';
+const KEY_WARNING_DISMISSED_SETTING = 'ocr.keyWarningDismissed';
 const modelSettingKey = (provider) => `ocr.model.${provider}`;
 
 // `models` holds only the user's overrides ('' = use the default), so the
 // UI can show the default as a placeholder. `configured` reports whether each
-// provider's env var is set — never the key itself.
+// provider's env var is set — never the key itself. `keyWarningDismissed` is
+// the launch popup's "Don't show again" (mirrors iOS's
+// `OCRSettings.keyWarningDismissed`).
 export function getOcrSettings() {
   const stored = getSetting(PROVIDER_SETTING);
   const provider = OCR_PROVIDERS[stored] ? stored : DEFAULT_PROVIDER;
@@ -36,12 +39,17 @@ export function getOcrSettings() {
       },
     ]),
   );
-  return { provider, providers };
+  return { provider, providers, keyWarningDismissed: getSetting(KEY_WARNING_DISMISSED_SETTING) === 'true' };
 }
 
 // `models` is optional and partial: { openai: 'gpt-x' } overrides one
 // provider; a blank string clears that override back to the default.
-export function updateOcrSettings({ provider, models = {} }) {
+export function updateOcrSettings({ provider, models = {}, keyWarningDismissed }) {
+  if (keyWarningDismissed !== undefined) {
+    if (typeof keyWarningDismissed !== 'boolean') throw new Error('keyWarningDismissed must be a boolean');
+    if (keyWarningDismissed) setSetting(KEY_WARNING_DISMISSED_SETTING, 'true');
+    else deleteSetting(KEY_WARNING_DISMISSED_SETTING);
+  }
   if (provider !== undefined) {
     if (!OCR_PROVIDERS[provider]) throw new Error(`Unknown OCR provider: ${provider}`);
     setSetting(PROVIDER_SETTING, provider);

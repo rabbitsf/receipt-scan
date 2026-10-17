@@ -274,12 +274,12 @@ struct ReceiptListView: View {
                 }
                 ToolbarItem(placement: .navigation) {
                     Button {
-                        exportCSV(filteredReceipts)
+                        exportCSV()
                     } label: {
                         Label("Export", systemImage: "square.and.arrow.up")
                     }
                     .accessibilityIdentifier("exportButton")
-                    .disabled(filteredReceipts.isEmpty)
+                    .disabled(receiptsToExport.isEmpty)
                 }
                 ToolbarItem(placement: .navigation) {
                     Button(isSelecting ? "Done" : "Select") {
@@ -345,7 +345,7 @@ struct ReceiptListView: View {
                                 }
                                 .accessibilityIdentifier("bulkDeleteButton")
                                 Button("Export") {
-                                    exportCSV(filteredReceipts.filter { selection.contains($0.persistentModelID) })
+                                    exportCSV()
                                 }
                                 .accessibilityIdentifier("bulkExportButton")
                                 Button {
@@ -467,8 +467,23 @@ struct ReceiptListView: View {
         isSelecting = false
     }
 
-    private func exportCSV(_ receipts: [Receipt]) {
-        let csv = ReceiptCSVExporter.csv(for: receipts)
+    /// What Export puts in the CSV: the selected receipts while selecting,
+    /// otherwise every visible one. Both Export buttons go through this —
+    /// the top-bar one used to export the whole list even with receipts
+    /// selected (user-reported).
+    private var receiptsToExport: [Receipt] {
+        Self.receiptsToExport(filteredReceipts, isSelecting: isSelecting, selection: selection, id: \.persistentModelID)
+    }
+
+    /// The rule behind `receiptsToExport`; exposed for unit testing.
+    static func receiptsToExport<Item, ID: Hashable>(
+        _ visible: [Item], isSelecting: Bool, selection: Set<ID>, id: (Item) -> ID
+    ) -> [Item] {
+        isSelecting ? visible.filter { selection.contains(id($0)) } : visible
+    }
+
+    private func exportCSV() {
+        let csv = ReceiptCSVExporter.csv(for: receiptsToExport)
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("receipts-\(UUID().uuidString).csv")
         do {
             try csv.write(to: url, atomically: true, encoding: .utf8)

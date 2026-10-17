@@ -72,6 +72,31 @@ final class BulkSelectExportFlowTests: XCTestCase {
         )
     }
 
+    /// In select mode the top-bar Export exports the selection, not the
+    /// whole list (user-reported bug), so it's disabled until something
+    /// is selected. The rule itself is unit-tested in
+    /// `ReceiptListExportTests`.
+    func testTopExportFollowsSelectionInSelectMode() throws {
+        let app = XCUIApplication.receiptTracker()
+        app.terminate()
+        app.launch()
+
+        let merchant = "TopExportTest Merchant \(UUID().uuidString.prefix(8))"
+        addReceipt(app, merchant: merchant, totalCost: "6.00")
+        XCTAssertTrue(app.staticTexts[merchant].waitForExistence(timeout: 10))
+
+        let exportButton = app.buttons["exportButton"]
+        XCTAssertTrue(exportButton.isEnabled)
+
+        app.buttons["selectButton"].tap()
+        XCTAssertFalse(exportButton.isEnabled, "Nothing selected yet, so nothing to export")
+
+        app.staticTexts[merchant].firstMatch.tap()
+        XCTAssertTrue(exportButton.isEnabled)
+        exportButton.tap()
+        XCTAssertTrue(app.otherElements["ActivityListView"].waitForExistence(timeout: 10))
+    }
+
     /// "Select All" only acts on currently-FILTERED rows (mirrors
     /// `ReceiptList.jsx`'s header checkbox, which selects/clears all
     /// currently-LOADED rows, not the entire dataset). Scoped via a

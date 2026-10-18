@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "concurrently -n backend,frontend -c blue,green \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
-    "install:all": "npm install --prefix backend && npm install --prefix frontend"
+    "install:all": "npm install --prefix backend && npm install --prefix frontend",
+    "build:ios-web": "npm run build --prefix frontend && rm -rf ios-app/ReceiptTracker/WebApp && cp -R frontend/dist ios-app/ReceiptTracker/WebApp"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

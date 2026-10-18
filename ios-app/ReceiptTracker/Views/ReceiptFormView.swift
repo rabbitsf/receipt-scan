@@ -130,24 +130,6 @@ struct ReceiptFormView: View {
         return groupSelection
     }
 
-    /// Local time zone, not UTC — parsing "2026-07-23" as UTC midnight,
-    /// then handing that `Date` to `DatePicker`/list-row formatting (both
-    /// of which render in the LOCAL time zone), silently shifted the
-    /// displayed date back by a day for anyone west of UTC (bug report:
-    /// scanned receipt dates showing one day behind). Parsing as local
-    /// midnight instead keeps every stage of this app's date handling
-    /// consistent — `DatePicker`, list/dashboard display, and
-    /// `ReceiptFilter`/`DashboardSummary`'s `Calendar.current` defaults
-    /// already all assume local time.
-    private static let ocrDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.timeZone = TimeZone.current
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        return formatter
-    }()
-
     init(modelContext: ModelContext, existingReceipt: Receipt? = nil) {
         self.modelContext = modelContext
         self.existingReceipt = existingReceipt
@@ -429,8 +411,9 @@ struct ReceiptFormView: View {
     }
 
     /// Exposed for unit testing without needing a `ReceiptFormView` instance.
+    /// Local-time parsing (never UTC) lives in `DateOnly`.
     static func parseOCRDate(_ string: String) -> Date? {
-        ocrDateFormatter.date(from: string)
+        DateOnly.date(from: string)
     }
 
     /// Saves the current item, then moves to the next detected receipt in

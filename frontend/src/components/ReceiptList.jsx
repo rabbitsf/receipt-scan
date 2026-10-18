@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { listReceipts, deleteReceipt, bulkDeleteReceipts, getCategories, getGroups } from '../api.js';
 import { CATEGORY_OPTIONS, mergeCategoryOptions } from '../categories.js';
+import { useServerInfo, EXPORT_FORMAT_LABELS } from '../serverInfo.js';
 
 const ICON_PROPS = {
   width: 16,
@@ -75,6 +76,7 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
   const [viewingImageUrl, setViewingImageUrl] = useState(null);
   const [categoryOptions, setCategoryOptions] = useState(CATEGORY_OPTIONS);
   const [groupOptions, setGroupOptions] = useState([]);
+  const { exportFormats } = useServerInfo();
 
   useEffect(() => {
     getCategories()
@@ -265,12 +267,11 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
       </div>
 
       <div className="form-actions">
-        <button type="button" className="secondary" onClick={() => handleExport('pdf')}>
-          Export PDF
-        </button>
-        <button type="button" className="secondary" onClick={() => handleExport('xlsx')}>
-          Export Excel
-        </button>
+        {exportFormats.map((format) => (
+          <button key={format} type="button" className="secondary" onClick={() => handleExport(format)}>
+            Export {EXPORT_FORMAT_LABELS[format] ?? format.toUpperCase()}
+          </button>
+        ))}
       </div>
 
       {selectedIds.size > 0 && (
@@ -279,12 +280,11 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
           <button type="button" onClick={handleDeleteSelected}>
             Delete Selected
           </button>
-          <button type="button" className="secondary" onClick={() => handleExportSelected('pdf')}>
-            Export Selected PDF
-          </button>
-          <button type="button" className="secondary" onClick={() => handleExportSelected('xlsx')}>
-            Export Selected Excel
-          </button>
+          {exportFormats.map((format) => (
+            <button key={format} type="button" className="secondary" onClick={() => handleExportSelected(format)}>
+              Export Selected {EXPORT_FORMAT_LABELS[format] ?? format.toUpperCase()}
+            </button>
+          ))}
         </div>
       )}
 

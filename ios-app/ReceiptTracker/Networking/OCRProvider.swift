@@ -103,7 +103,17 @@ enum OCRSettings {
     }
 
     static func dismissKeyWarning(defaults: UserDefaults = .standard) {
-        defaults.set(true, forKey: keyWarningDismissedKey)
+        setKeyWarningDismissed(true, defaults: defaults)
+    }
+
+    /// `false` brings the launch warning back (used by the Web Access API,
+    /// mirroring the web app's `keyWarningDismissed` setting).
+    static func setKeyWarningDismissed(_ dismissed: Bool, defaults: UserDefaults = .standard) {
+        if dismissed {
+            defaults.set(true, forKey: keyWarningDismissedKey)
+        } else {
+            defaults.removeObject(forKey: keyWarningDismissedKey)
+        }
     }
 
     /// Whether to show the "no API key" popup at launch: the selected

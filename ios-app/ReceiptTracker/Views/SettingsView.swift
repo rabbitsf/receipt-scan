@@ -29,23 +29,19 @@ struct SettingsView: View {
 
     @State private var deleteBlockedMessage: String?
 
+    @ObservedObject private var webAccess = WebAccessServer.shared
+
     /// Every non-predefined category currently known — Settings-created
     /// (`customCategories`) or already in use on a receipt via the form's
     /// "Custom category…" field. Same merge `CategoryOptions` already uses
     /// elsewhere, `predefined` dropped since those get their own read-only
     /// rows above this list.
     private var customCategoryNames: [String] {
-        Array(
-            CategoryOptions.mergeWithInUseCategories(
-                receipts.compactMap(\.category),
-                customCategories: customCategories.map(\.name)
-            )
-            .dropFirst(CategoryOptions.predefined.count)
-        )
+        CustomValueStore.listedNames(.category, receipts: receipts, customNames: customCategories.map(\.name))
     }
 
     private var groupNames: [String] {
-        GroupOptions.availableGroups(from: receipts, customGroups: customGroups.map(\.name))
+        CustomValueStore.listedNames(.group, receipts: receipts, customNames: customGroups.map(\.name))
     }
 
     var body: some View {
@@ -132,6 +128,42 @@ struct SettingsView: View {
                     Text("Google Drive")
                 } footer: {
                     Text("Connect once here to upload receipt photos to a \"Receipt Tracker\" folder in your Google Drive — from a receipt's photo view, or for multiple receipts at once via Select.")
+                }
+
+                Section {
+                    Toggle("Web Access", isOn: Binding(
+                        get: { webAccess.isEnabled },
+                        set: { isOn in
+                            if isOn {
+                                webAccess.start(context: modelContext)
+                            } else {
+                                webAccess.stop()
+                            }
+                        }
+                    ))
+                    .accessibilityIdentifier("webAccessToggle")
+                    if webAccess.isEnabled {
+                        if let errorMessage = webAccess.errorMessage {
+                            Text(errorMessage)
+                                .foregroundStyle(.red)
+                                .accessibilityIdentifier("webAccessError")
+                        } else {
+                            LabeledContent("Address") {
+                                Text(webAccess.address ?? "Not on Wi-Fi")
+                                    .textSelection(.enabled)
+                                    .accessibilityIdentifier("webAccessAddress")
+                            }
+                            LabeledContent("Access code") {
+                                Text(webAccess.accessCode ?? "")
+                                    .font(.title3.monospacedDigit().bold())
+                                    .accessibilityIdentifier("webAccessCode")
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Web Access over Wi-Fi")
+                } footer: {
+                    Text("Use the receipt web app on a computer on the same Wi-Fi: open the address in its browser and enter the code. Keep this app open while you use it.")
                 }
 
                 Section {
@@ -288,72 +320,38 @@ struct SettingsView: View {
         }
     }
 
+    // Add/rename/delete rules live in `CustomValueStore` (shared with the
+    // Web Access API); these only wire them to this screen's state.
     private func addCategory() {
-        let trimmed = newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
-        defer { newCategoryName = "" }
-        guard !trimmed.isEmpty, !CategoryOptions.predefined.contains(trimmed), !customCategoryNames.contains(trimmed) else {
-            return
-        }
-        modelContext.insert(CustomCategory(name: trimmed))
-        try? modelContext.save()
+        CustomValueStore.add(newCategoryName, kind: .category, in: modelContext)
+        newCategoryName = ""
     }
 
     private func requestDeleteCategory(_ category: String) {
-        let count = CategoryOptions.usageCount(of: category, in: receipts)
-        guard count == 0 else {
-            deleteBlockedMessage = "\"\(category)\" is used by \(count) receipt\(count == 1 ? "" : "s") and can't be deleted. Change or clear that field on those receipts first."
-            return
-        }
-        if let existing = customCategories.first(where: { $0.name == category }) {
-            modelContext.delete(existing)
-            try? modelContext.save()
+        if case .blocked(let count) = CustomValueStore.delete(category, kind: .category, in: modelContext) {
+            deleteBlockedMessage = CustomValueStore.blockedMessage(category, usageCount: count)
         }
     }
 
     private func commitRenameCategory(from oldName: String) {
-        defer { renamingCategory = nil }
-        let trimmed = renameCategoryText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed != oldName, !CategoryOptions.predefined.contains(trimmed) else { return }
-        CategoryOptions.renameInUse(from: oldName, to: trimmed, in: receipts)
-        if let existing = customCategories.first(where: { $0.name == oldName }) {
-            existing.name = trimmed
-        } else {
-            modelContext.insert(CustomCategory(name: trimmed))
-        }
-        try? modelContext.save()
+        CustomValueStore.rename(oldName, to: renameCategoryText, kind: .category, in: modelContext)
+        renamingCategory = nil
     }
 
     private func addGroup() {
-        let trimmed = newGroupName.trimmingCharacters(in: .whitespacesAndNewlines)
-        defer { newGroupName = "" }
-        guard !trimmed.isEmpty, !groupNames.contains(trimmed) else { return }
-        modelContext.insert(CustomGroup(name: trimmed))
-        try? modelContext.save()
+        CustomValueStore.add(newGroupName, kind: .group, in: modelContext)
+        newGroupName = ""
     }
 
     private func requestDeleteGroup(_ group: String) {
-        let count = GroupOptions.usageCount(of: group, in: receipts)
-        guard count == 0 else {
-            deleteBlockedMessage = "\"\(group)\" is used by \(count) receipt\(count == 1 ? "" : "s") and can't be deleted. Change or clear that field on those receipts first."
-            return
-        }
-        if let existing = customGroups.first(where: { $0.name == group }) {
-            modelContext.delete(existing)
-            try? modelContext.save()
+        if case .blocked(let count) = CustomValueStore.delete(group, kind: .group, in: modelContext) {
+            deleteBlockedMessage = CustomValueStore.blockedMessage(group, usageCount: count)
         }
     }
 
     private func commitRenameGroup(from oldName: String) {
-        defer { renamingGroup = nil }
-        let trimmed = renameGroupText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed != oldName else { return }
-        GroupOptions.renameInUse(from: oldName, to: trimmed, in: receipts)
-        if let existing = customGroups.first(where: { $0.name == oldName }) {
-            existing.name = trimmed
-        } else {
-            modelContext.insert(CustomGroup(name: trimmed))
-        }
-        try? modelContext.save()
+        CustomValueStore.rename(oldName, to: renameGroupText, kind: .group, in: modelContext)
+        renamingGroup = nil
     }
 
     private func connectToDrive() {

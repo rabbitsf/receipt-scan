@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { CATEGORY_OPTIONS } from '../categories.js';
+import { useServerInfo } from '../serverInfo.js';
 import {
   getCategories,
   createCategory,
@@ -19,6 +20,7 @@ import {
 // fixed/uneditable; only custom entries are manageable here.
 export default function SettingsView({ onDone }) {
   const [categories, setCategories] = useState([]);
+  const { host } = useServerInfo();
   const [groups, setGroups] = useState([]);
   const [error, setError] = useState(null);
 
@@ -214,7 +216,16 @@ export default function SettingsView({ onDone }) {
         <div className="settings-section">
           <h3>Receipt Scanning</h3>
           <p className="settings-section-hint">
-            Choose which AI reads your receipt photos. API keys live in <code>backend/.env</code>, not here.
+            Choose which AI reads your receipt photos. API keys live{' '}
+            {host === 'iphone' ? (
+              'in the iPhone app (Settings → Receipt Scanning)'
+            ) : (
+              <>
+                in <code>backend/.env</code>
+              </>
+            )}
+            , not
+            here.
             Leave the model blank to use the default.
           </p>
           <form className="settings-inline-form" onSubmit={handleSaveModel}>
@@ -249,9 +260,16 @@ export default function SettingsView({ onDone }) {
             </p>
           ) : (
             <p className="form-error settings-ocr-status">
-              No {ocrSettings.providers[ocrSettings.provider].displayName} API key configured — set{' '}
-              <code>{ocrSettings.providers[ocrSettings.provider].envVar}</code> in <code>backend/.env</code>{' '}
-              and restart the backend. Scanning will fail until then.
+              No {ocrSettings.providers[ocrSettings.provider].displayName} API key configured —{' '}
+              {host === 'iphone' ? (
+                'add it in the iPhone app under Settings → Receipt Scanning.'
+              ) : (
+                <>
+                  set <code>{ocrSettings.providers[ocrSettings.provider].envVar}</code> in <code>backend/.env</code>{' '}
+                  and restart the backend.
+                </>
+              )}{' '}
+              Scanning will fail until then.
             </p>
           )}
         </div>

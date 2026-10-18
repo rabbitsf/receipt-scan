@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getOcrSettings, updateOcrSettings } from '../api.js';
+import { useServerInfo } from '../serverInfo.js';
 
 // Shown once when the app loads if the selected scanning provider has no API
 // key in backend/.env (and the user hasn't chosen "Don't show again").
@@ -9,6 +10,7 @@ export default function MissingKeyWarning({ onAddKey }) {
   // All providers, so the message stays general: on first launch the user
   // hasn't chosen one yet.
   const [providers, setProviders] = useState(null);
+  const { host } = useServerInfo();
 
   useEffect(() => {
     getOcrSettings()
@@ -39,8 +41,15 @@ export default function MissingKeyWarning({ onAddKey }) {
         <h3 id="key-warning-title">No API Key</h3>
         <p id="key-warning-body">
           Scanning receipt photos needs an API key from an AI provider ({orList(providers.map((p) => p.displayName))}).
-          Add it to <code>backend/.env</code> as {orList(providers.map((p) => p.envVar))}, restart the backend, and
-          choose that provider in Settings. You can still add receipts by hand.
+          {host === 'iphone' ? (
+            <>Add it in the iPhone app under Settings → Receipt Scanning. </>
+          ) : (
+            <>
+              Add it to <code>backend/.env</code> as {orList(providers.map((p) => p.envVar))}, restart the backend, and
+              choose that provider in Settings.{' '}
+            </>
+          )}
+          You can still add receipts by hand.
         </p>
         <div className="key-warning-actions">
           <button

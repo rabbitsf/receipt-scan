@@ -5,24 +5,12 @@ import Foundation
 /// folder — but a readable, mostly-safe name (still portable if the user
 /// later downloads it to any OS) is nicer than a bare UUID.
 enum DriveUploadFilename {
-    /// Local time zone, not UTC — matches `ReceiptCSVExporter`'s
-    /// `dateFormatter` exactly, for the same reason: `receipt.date` is
-    /// already a local wall-clock calendar day.
-    private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.timeZone = TimeZone.current
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        return formatter
-    }()
-
     /// "{date}_{merchant}.jpg", sanitized. Falls back to `fallbackID` (a
     /// stable per-receipt string, e.g. derived from its persistent model
     /// ID) in place of the merchant when it's nil/blank, so same-day
     /// no-merchant receipts still get distinct names.
     static func make(date: Date, merchant: String?, fallbackID: String) -> String {
-        let datePart = dateFormatter.string(from: date)
+        let datePart = DateOnly.string(from: date)
         let sanitizedMerchant = sanitize(merchant ?? "")
         let namePart = sanitizedMerchant.isEmpty ? fallbackID : sanitizedMerchant
         return "\(datePart)_\(namePart).jpg"

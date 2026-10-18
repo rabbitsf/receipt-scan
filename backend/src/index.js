@@ -15,7 +15,9 @@ app.use(express.json());
 
 app.get('/api/health', (req, res) => {
   const { count } = db.prepare('SELECT COUNT(*) AS count FROM receipts').get();
-  res.json({ status: 'ok', receiptCount: count });
+  // `host`/`exportFormats` tell the frontend which server it's talking to
+  // (see `frontend/src/serverInfo.js`; the iPhone app's server reports 'iphone').
+  res.json({ status: 'ok', receiptCount: count, host: 'computer', exportFormats: ['pdf', 'xlsx'] });
 });
 
 app.use('/api/receipts', receiptsRouter);

@@ -311,4 +311,17 @@ final class WebAPIRouterTests: XCTestCase {
         let bad = await call("POST", "/api/receipts/extract/estimate", json: ["pageSizes": [["width": 0]]])
         XCTAssertEqual(bad.status, 400)
     }
+
+    func testAIConsentIsReportedAndCanBeGrantedFromTheBrowser() async {
+        var body = await call("GET", "/api/settings/ocr").body as! [String: Any]
+        XCTAssertEqual((body["aiConsent"] as? [String: Bool])?["anthropic"], false)
+        XCTAssertTrue(((body["aiConsentExplanation"] as? [String: String])?["anthropic"] ?? "").contains("Anthropic"))
+
+        body = await call("PUT", "/api/settings/ocr", json: ["aiConsent": ["anthropic": true]]).body as! [String: Any]
+        XCTAssertEqual((body["aiConsent"] as? [String: Bool])?["anthropic"], true)
+        XCTAssertTrue(AIScanConsent.isGranted(for: .anthropic, defaults: defaults))
+
+        let bad = await call("PUT", "/api/settings/ocr", json: ["aiConsent": ["anthropic": "yes"]])
+        XCTAssertEqual(bad.status, 400)
+    }
 }

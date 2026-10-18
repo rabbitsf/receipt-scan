@@ -35,6 +35,7 @@ struct ExtractedReceipt: Decodable, Equatable {
 
 enum OCRError: LocalizedError, Equatable {
     case missingAPIKey(providerName: String)
+    case consentRequired(providerName: String)
     case invalidResponse
     case server(String)
     case noTextContent
@@ -45,6 +46,8 @@ enum OCRError: LocalizedError, Equatable {
         switch self {
         case .missingAPIKey(let providerName):
             return "No \(providerName) API key set. Add one in Settings to scan receipts."
+        case .consentRequired(let providerName):
+            return "Sending receipts to \(providerName) isn't allowed yet. Allow it in Settings → Receipt Scanning."
         case .invalidResponse:
             return "The server returned an unexpected response."
         case .server(let message):

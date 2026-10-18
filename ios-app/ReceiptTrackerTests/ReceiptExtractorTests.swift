@@ -43,6 +43,27 @@ final class ReceiptExtractorTests: XCTestCase {
         }
     }
 
+    /// With a key but without the user's permission, nothing is sent.
+    func testExtractReceiptsRequiresPermissionBeforeSending() async throws {
+        try APIKeyStore.save("sk-ant-test", for: .anthropic)
+        do {
+            _ = try await ReceiptExtractor.extractReceipts(images: [Data()], mediaType: "image/jpeg", provider: .anthropic, hasConsent: { _ in false })
+            XCTFail("Expected consentRequired error")
+        } catch let error as OCRError {
+            XCTAssertEqual(error, .consentRequired(providerName: "Claude"))
+        }
+    }
+
+    func testConsentIsPerProviderAndRevocable() {
+        XCTAssertFalse(AIScanConsent.isGranted(for: .openai, defaults: defaults))
+        AIScanConsent.set(true, for: .openai, defaults: defaults)
+        XCTAssertTrue(AIScanConsent.isGranted(for: .openai, defaults: defaults))
+        XCTAssertFalse(AIScanConsent.isGranted(for: .gemini, defaults: defaults))
+        AIScanConsent.set(false, for: .openai, defaults: defaults)
+        XCTAssertFalse(AIScanConsent.isGranted(for: .openai, defaults: defaults))
+        XCTAssertTrue(AIScanConsent.explanation(for: .gemini).contains("Google (Gemini)"))
+    }
+
     func testExtractReceiptsThrowsInvalidResponseForEmptyImages() async throws {
         do {
             _ = try await ReceiptExtractor.extractReceipts(images: [], mediaType: "image/jpeg")

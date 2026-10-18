@@ -9,6 +9,11 @@ extension XCUIApplication {
     static func receiptTracker() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["-ocrKeyWarningDismissed", "YES"]
+        // AI permission pre-granted for every provider (same argument-domain
+        // trick); `AIScanConsentFlowTests` builds its own app to test the prompt.
+        for provider in ["anthropic", "openai", "gemini"] {
+            app.launchArguments += ["-aiScanConsent.\(provider)", "YES"]
+        }
         return app
     }
 }

@@ -40,6 +40,8 @@ struct ReceiptFormView: View {
     @State private var showingLibraryPicker = false
     @State private var photoPickerItem: PhotosPickerItem?
     @State private var showingDocumentPicker = false
+    /// What to run once the user answers the AI permission prompt.
+    @State private var consentRequest: (provider: OCRProvider, onAllow: () -> Void, onDeny: () -> Void)?
     @State private var pendingPDFFiles: [PDFImportScanner.File] = []
     @State private var pendingCost: PDFImportScanner.CostSummary?
     @State private var showingCostPrompt = false
@@ -349,6 +351,26 @@ struct ReceiptFormView: View {
             } message: { cost in
                 Text(costPromptMessage(cost))
             }
+            .alert(
+                consentRequest.map { "Send Receipts to \($0.provider.displayName)?" } ?? "",
+                isPresented: Binding(get: { consentRequest != nil }, set: { if !$0 { consentRequest = nil } }),
+                presenting: consentRequest
+            ) { request in
+                Button("Don't Allow", role: .cancel) {
+                    consentRequest = nil
+                    request.onDeny()
+                }
+                Button("Allow") {
+                    AIScanConsent.set(true, for: request.provider)
+                    consentRequest = nil
+                    // Let this alert finish closing first; a second alert
+                    // (the PDF cost prompt) presented mid-dismissal is dropped.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { request.onAllow() }
+                }
+                .accessibilityIdentifier("allowAIScanButton")
+            } message: { request in
+                Text(AIScanConsent.explanation(for: request.provider))
+            }
             .fullScreenCover(isPresented: $showingCamera) {
                 CameraCaptureView(
                     onCapture: { image in
@@ -392,12 +414,34 @@ struct ReceiptFormView: View {
         pdfData = nil
         sourceLabel = nil
         itemNotices = []
-        Task { await scanReceipt(images: [jpegData]) }
+        withScanPermission(
+            onAllow: { Task { await scanReceipt(images: [jpegData]) } },
+            onDeny: { extractNotice = "Scanning is off for this photo — please enter the details below." }
+        )
+    }
+
+    /// Asks once per provider before any receipt is sent to an AI service
+    /// (`AIScanConsent`). Without a saved key nothing would be sent anyway,
+    /// so the scan goes ahead and reports the missing key instead.
+    private func withScanPermission(onAllow: @escaping () -> Void, onDeny: @escaping () -> Void) {
+        let provider = OCRSettings.selectedProvider()
+        if AIScanConsent.isGranted(for: provider) || APIKeyStore.load(for: provider)?.isEmpty != false {
+            onAllow()
+        } else {
+            consentRequest = (provider, onAllow, onDeny)
+        }
     }
 
     // MARK: - PDF import
 
     private func preparePDFImport(_ urls: [URL]) {
+        withScanPermission(
+            onAllow: { showCostPrompt(for: urls) },
+            onDeny: { extractNotice = "PDF import needs permission to send pages for scanning. You can allow it in Settings → Receipt Scanning." }
+        )
+    }
+
+    private func showCostPrompt(for urls: [URL]) {
         let picked = existingReceipt == nil ? urls : Array(urls.prefix(1))
         pendingPDFFiles = picked.compactMap { url in
             (try? Data(contentsOf: url)).map { PDFImportScanner.File(name: url.lastPathComponent, data: $0) }

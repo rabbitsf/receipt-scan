@@ -14,6 +14,7 @@ struct SettingsView: View {
     @State private var hasStoredKey: Bool = APIKeyStore.load(for: OCRSettings.selectedProvider()) != nil
     @State private var modelText: String = OCRSettings.modelOverride(for: OCRSettings.selectedProvider()) ?? ""
     @State private var statusMessage: String?
+    @State private var aiConsent: Bool = AIScanConsent.isGranted(for: OCRSettings.selectedProvider())
 
     @State private var isDriveConnected = GoogleDriveAuth.isSignedIn
     @State private var isConnectingDrive = false
@@ -63,16 +64,25 @@ struct SettingsView: View {
                         .accessibilityIdentifier("ocrModelField")
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                    Toggle("Allow sending receipts to \(provider.companyName)", isOn: Binding(
+                        get: { aiConsent },
+                        set: { allowed in
+                            AIScanConsent.set(allowed, for: provider)
+                            aiConsent = allowed
+                        }
+                    ))
+                    .accessibilityIdentifier("aiConsentToggle")
                 } header: {
                     Text("Receipt Scanning")
                 } footer: {
-                    Text("Choose which AI scans your receipt photos, directly from this device. Each provider keeps its own \(provider.displayName) API key, stored securely in the iOS Keychain and never sent anywhere except \(provider.apiHost). Get a key at \(provider.keyConsoleHint). Leave the model blank to use \(provider.defaultModel).")
+                    Text("Choose which AI scans your receipts. When you scan, the receipt photo or PDF pages are sent from this device to \(provider.companyName) (\(provider.apiHost)) with your own API key, only if sending is allowed above. The key is stored in the iOS Keychain. Get a key at \(provider.keyConsoleHint). Leave the model blank to use \(provider.defaultModel).")
                 }
                 .onChange(of: provider) { _, newProvider in
                     OCRSettings.setSelectedProvider(newProvider)
                     apiKey = APIKeyStore.load(for: newProvider) ?? ""
                     hasStoredKey = APIKeyStore.load(for: newProvider) != nil
                     modelText = OCRSettings.modelOverride(for: newProvider) ?? ""
+                    aiConsent = AIScanConsent.isGranted(for: newProvider)
                     statusMessage = nil
                 }
 
@@ -201,6 +211,13 @@ struct SettingsView: View {
                     Text("Groups")
                 } footer: {
                     Text("Groups added here — or typed as \"New group…\" on a receipt — show up in the group picker right away.")
+                }
+
+                Section {
+                    Link("Privacy Policy", destination: AppLinks.privacyPolicy)
+                        .accessibilityIdentifier("privacyPolicyLink")
+                } header: {
+                    Text("About")
                 }
             }
             .alert("Can't Delete", isPresented: Binding(

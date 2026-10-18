@@ -4,6 +4,7 @@ import ScanCostDialog from './ScanCostDialog.jsx';
 import { uploadReceiptImage, extractReceiptFields, createReceipt } from '../api.js';
 import { emptyReceiptValues as emptyValues, toFormValues } from '../receiptFields.js';
 import { costSummary, scanFiles } from '../pdfImport.js';
+import { ensureScanConsent } from '../scanConsent.js';
 
 // A review entry: { values, imagePath, pdfPath, sourceLabel, notices }.
 const blankEntry = { values: emptyValues, imagePath: null, pdfPath: null, sourceLabel: null, notices: [] };
@@ -41,6 +42,10 @@ export default function UploadReceipt({ onDone }) {
       setStatus('idle');
       return;
     }
+    if (!(await ensureScanConsent())) {
+      startReview([{ ...blankEntry, imagePath }], 'Scanning is off for this photo — please enter the details below.');
+      return;
+    }
     setStatus('extracting');
     try {
       const extracted = await extractReceiptFields([imagePath]);
@@ -63,6 +68,10 @@ export default function UploadReceipt({ onDone }) {
     e.target.value = '';
     if (!files.length) return;
     setNotice(null);
+    if (!(await ensureScanConsent())) {
+      setNotice('PDF import needs permission to send pages for scanning.');
+      return;
+    }
     setStatus('uploading');
     try {
       setPendingPdfs({ files, summary: await costSummary(files) });

@@ -3,6 +3,7 @@ import { uploadReceiptImage, extractReceiptFields, getCategories, getGroups, fil
 import { emptyReceiptValues as emptyValues, toFormValues } from '../receiptFields.js';
 import { CATEGORY_OPTIONS, CUSTOM_CATEGORY_VALUE, mergeCategoryOptions } from '../categories.js';
 import { CUSTOM_GROUP_VALUE } from '../groups.js';
+import { ensureScanConsent } from '../scanConsent.js';
 
 export default function ReceiptForm({
   initialValues,
@@ -101,6 +102,10 @@ export default function ReceiptForm({
       setUploadingImage(false);
     }
 
+    if (!(await ensureScanConsent())) {
+      setExtractNotice('Scanning is off for this photo — please check the fields below.');
+      return;
+    }
     setExtractingImage(true);
     try {
       const extracted = await extractReceiptFields(uploadedPath);

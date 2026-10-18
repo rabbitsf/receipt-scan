@@ -9,13 +9,18 @@ enum ReceiptExtractor {
         images: [Data],
         mediaType: String,
         provider: OCRProvider = OCRSettings.selectedProvider(),
-        session: URLSession = .shared
+        session: URLSession = .shared,
+        hasConsent: (OCRProvider) -> Bool = { AIScanConsent.isGranted(for: $0) }
     ) async throws -> [ExtractedReceipt] {
         guard !images.isEmpty else {
             throw OCRError.invalidResponse
         }
         guard let apiKey = APIKeyStore.load(for: provider), !apiKey.isEmpty else {
             throw OCRError.missingAPIKey(providerName: provider.displayName)
+        }
+        // Never send a receipt without the user's permission (guideline 5.1.2(i)).
+        guard hasConsent(provider) else {
+            throw OCRError.consentRequired(providerName: provider.displayName)
         }
 
         let request = try provider.client.makeRequest(

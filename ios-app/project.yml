@@ -30,6 +30,8 @@ targets:
       path: ReceiptTracker/Info.plist
       properties:
         UILaunchScreen: {}
+        # Only standard HTTPS — skips the export-compliance question on upload.
+        ITSAppUsesNonExemptEncryption: false
         NSCameraUsageDescription: "Receipt Tracker uses the camera to photograph receipts so their details can be scanned automatically."
         NSLocalNetworkUsageDescription: "Receipt Tracker uses your local network so a computer on the same Wi-Fi can open the receipt web app when Web Access is turned on."
         NSPhotoLibraryAddUsageDescription: "Receipt Tracker can save a receipt photo to your Photos library when you choose Save to Photos."

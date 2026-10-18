@@ -43,6 +43,15 @@ enum OCRProvider: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Who receives scanned receipts — named in the AI permission prompt.
+    var companyName: String {
+        switch self {
+        case .anthropic: return "Anthropic"
+        case .openai: return "OpenAI"
+        case .gemini: return "Google"
+        }
+    }
+
     var keyConsoleHint: String {
         switch self {
         case .anthropic: return "console.anthropic.com"
@@ -57,6 +66,33 @@ enum OCRProvider: String, CaseIterable, Identifiable {
         case .openai: return OpenAIVisionClient.self
         case .gemini: return GeminiVisionClient.self
         }
+    }
+}
+
+/// The user's explicit permission to send receipt images to an AI provider
+/// (App Store guideline 5.1.2(i): disclose sharing with third-party AI and
+/// get permission first). Asked once per provider, revocable in Settings.
+/// Enforced in `ReceiptExtractor` — THE entry point every scan goes through
+/// (iOS form, PDF import, Web Access) — so no path can skip it.
+enum AIScanConsent {
+    private static func key(_ provider: OCRProvider) -> String { "aiScanConsent.\(provider.rawValue)" }
+
+    static func isGranted(for provider: OCRProvider, defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: key(provider))
+    }
+
+    static func set(_ granted: Bool, for provider: OCRProvider, defaults: UserDefaults = .standard) {
+        if granted {
+            defaults.set(true, forKey: key(provider))
+        } else {
+            defaults.removeObject(forKey: key(provider))
+        }
+    }
+
+    /// What the permission prompt says (iOS alert and, via the Web Access
+    /// API, the browser) — one wording everywhere.
+    static func explanation(for provider: OCRProvider) -> String {
+        "To fill in receipt details automatically, the receipt photo or PDF pages you scan are sent to \(provider.companyName) (\(provider.displayName)) using your API key. Nothing is sent until you allow it, and only when you scan. You can change this anytime in Settings → Receipt Scanning."
     }
 }
 

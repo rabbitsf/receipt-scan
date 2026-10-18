@@ -426,6 +426,20 @@ final class WebAPIRouter {
                 }
                 OCRSettings.setSelectedProvider(provider, defaults: defaults)
             }
+            // The browser is the phone's owner (they entered the access code), so
+            // they may grant or revoke AI permission here too — same rule as Settings.
+            if let consent = body["aiConsent"] {
+                guard let consent = consent as? [String: Any] else {
+                    return .error("aiConsent must be an object of provider → boolean", status: 400)
+                }
+                for (id, value) in consent {
+                    guard let provider = OCRProvider(rawValue: id) else { return .error("Unknown OCR provider: \(id)", status: 400) }
+                    guard let allowed = value as? Bool, CFGetTypeID(value as CFTypeRef) == CFBooleanGetTypeID() else {
+                        return .error("aiConsent values must be booleans", status: 400)
+                    }
+                    AIScanConsent.set(allowed, for: provider, defaults: defaults)
+                }
+            }
             if let models = body["models"] {
                 guard let models = models as? [String: Any] else {
                     return .error("models must be an object of provider → model name", status: 400)
@@ -450,10 +464,14 @@ final class WebAPIRouter {
                 "configured": hasAPIKey(provider),
             ] as [String: Any]
         }
+        // Only the phone reports `aiConsent`; the web app asks before scanning
+        // when it's present and false (see `frontend/src/scanConsent.js`).
         return .json([
             "provider": OCRSettings.selectedProvider(defaults: defaults).rawValue,
             "providers": providers,
             "keyWarningDismissed": OCRSettings.keyWarningDismissed(defaults: defaults),
+            "aiConsent": Dictionary(uniqueKeysWithValues: OCRProvider.allCases.map { ($0.rawValue, AIScanConsent.isGranted(for: $0, defaults: defaults)) }),
+            "aiConsentExplanation": Dictionary(uniqueKeysWithValues: OCRProvider.allCases.map { ($0.rawValue, AIScanConsent.explanation(for: $0)) }),
         ])
     }
 

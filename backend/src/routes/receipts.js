@@ -12,10 +12,12 @@ import {
   deleteReceipt,
   getYearSummary,
   countReceiptsByImagePath,
+  countReceiptsByPdfPath,
   getDistinctCategories,
   getDistinctGroups,
 } from '../services/receiptsRepository.js';
-import { extractReceiptFields } from '../services/ocrService.js';
+import { extractReceiptFields, getOcrSettings, OCR_PROVIDERS } from '../services/ocrService.js';
+import { PROVIDER_LIMITS, estimateScanCost } from '../services/ocrScanCost.js';
 import { generateReceiptsPdf, generateReceiptsExcel } from '../services/exportService.js';
 import { dataDir, uploadsDir } from '../utils/paths.js';
 import {
@@ -36,15 +38,18 @@ const ALLOWED_IMAGE_MIME_TYPES = new Set([
   'image/heif',
 ]);
 
+// Images (receipt photos, rendered PDF pages) and PDFs (a receipt's own
+// pages from a PDF import, built in the browser).
 const upload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, uploadsDir),
-    filename: (req, file, cb) => cb(null, `${uuidv4()}${path.extname(file.originalname).toLowerCase()}`),
+    filename: (req, file, cb) =>
+      cb(null, `${uuidv4()}${file.mimetype === 'application/pdf' ? '.pdf' : path.extname(file.originalname).toLowerCase()}`),
   }),
-  limits: { fileSize: 15 * 1024 * 1024 },
+  limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (!ALLOWED_IMAGE_MIME_TYPES.has(file.mimetype)) {
-      cb(new Error('Only JPEG, PNG, WEBP, or HEIC/HEIF images are allowed'));
+    if (!ALLOWED_IMAGE_MIME_TYPES.has(file.mimetype) && file.mimetype !== 'application/pdf') {
+      cb(new Error('Only JPEG, PNG, WEBP, HEIC/HEIF images or PDFs are allowed'));
       return;
     }
     cb(null, true);
@@ -90,6 +95,13 @@ function validateReceiptInput(body, { partial = false } = {}) {
   if (body.imagePath !== undefined) {
     result.imagePath = body.imagePath;
   }
+  if (body.pdfPath !== undefined) {
+    if (body.pdfPath !== null && !(typeof body.pdfPath === 'string' && /^uploads\/[\w-]+\.pdf$/.test(body.pdfPath))) {
+      errors.push('pdfPath must be null or an uploaded PDF path');
+    } else {
+      result.pdfPath = body.pdfPath;
+    }
+  }
 
   return { errors, result };
 }
@@ -122,19 +134,22 @@ function buildExportFilename(filters, format) {
 }
 
 // Deletes a receipt row and, if no sibling row still references the same
-// image_path (multi-receipt-per-photo), removes the underlying image file.
+// image_path / pdf_path (multi-receipt-per-photo), removes those files.
 function deleteReceiptAndMaybeImage(id) {
   const deleted = deleteReceipt(id);
   if (!deleted) return null;
 
-  if (deleted.imagePath && countReceiptsByImagePath(deleted.imagePath) === 0) {
-    const absPath = path.join(dataDir, deleted.imagePath);
+  const unlinkIfUnused = (relPath, count) => {
+    if (!relPath || count(relPath) !== 0) return;
+    const absPath = path.join(dataDir, relPath);
     fs.unlink(absPath, (err) => {
       if (err && err.code !== 'ENOENT') {
-        console.error('Failed to delete receipt image:', absPath, err);
+        console.error('Failed to delete receipt file:', absPath, err);
       }
     });
-  }
+  };
+  unlinkIfUnused(deleted.imagePath, countReceiptsByImagePath);
+  unlinkIfUnused(deleted.pdfPath, countReceiptsByPdfPath);
 
   return deleted;
 }
@@ -161,14 +176,31 @@ router.post('/upload', (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No image file provided (field name: image)' });
     }
-    res.status(201).json({ imagePath: `uploads/${req.file.filename}` });
+    const key = req.file.mimetype === 'application/pdf' ? 'pdfPath' : 'imagePath';
+    res.status(201).json({ [key]: `uploads/${req.file.filename}` });
   });
 });
 
 router.use('/images', express.static(uploadsDir));
 
-// PDF page cap, mirrors iOS's `PDFPageRenderer.maxPages`.
-const MAX_EXTRACT_IMAGES = 5;
+// Page count, estimated cost and request limits for scanning images of the
+// given sizes with the selected provider — feeds the PDF import cost popup
+// and page budget (`frontend/src/pdfImport.js`). `usd` is null for a custom model.
+router.post('/extract/estimate', (req, res) => {
+  const { pageSizes } = req.body || {};
+  if (!Array.isArray(pageSizes) || !pageSizes.every((p) => p && Number(p.width) > 0 && Number(p.height) > 0)) {
+    return res.status(400).json({ error: 'pageSizes must be an array of { width, height }' });
+  }
+  const { provider, providers } = getOcrSettings();
+  const selected = providers[provider];
+  const model = selected.model || selected.defaultModel;
+  const estimate = estimateScanCost({
+    pageSizes: pageSizes.map((p) => ({ width: Number(p.width), height: Number(p.height) })),
+    provider,
+    isDefaultModel: model === OCR_PROVIDERS[provider].defaultModel,
+  });
+  res.json({ ...estimate, provider, providerName: selected.displayName, model, limits: PROVIDER_LIMITS[provider] });
+});
 
 router.post('/extract', async (req, res) => {
   const { imagePath, imagePaths } = req.body;
@@ -177,8 +209,10 @@ router.post('/extract', async (req, res) => {
   if (paths.length === 0 || !paths.every((p) => typeof p === 'string' && p)) {
     return res.status(400).json({ error: 'imagePath or a non-empty imagePaths array of strings is required' });
   }
-  if (paths.length > MAX_EXTRACT_IMAGES) {
-    return res.status(400).json({ error: `imagePaths cannot contain more than ${MAX_EXTRACT_IMAGES} images` });
+  // The selected provider's own per-request image limit.
+  const maxImages = PROVIDER_LIMITS[getOcrSettings().provider].maxImagesPerRequest;
+  if (paths.length > maxImages) {
+    return res.status(400).json({ error: `imagePaths cannot contain more than ${maxImages} images` });
   }
 
   const resolvedDataDir = path.resolve(dataDir);
@@ -360,6 +394,7 @@ router.put('/:id', (req, res) => {
     group: result.group !== undefined ? result.group : existing.group,
     note: result.note !== undefined ? result.note : existing.note,
     imagePath: result.imagePath !== undefined ? result.imagePath : existing.imagePath,
+    pdfPath: result.pdfPath, // undefined keeps the current PDF; null removes it
   };
 
   res.json(updateReceipt(id, merged));

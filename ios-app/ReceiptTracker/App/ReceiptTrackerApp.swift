@@ -48,6 +48,26 @@ struct ReceiptTrackerApp: App {
             try? context.save()
         }
 
+        // Same idea for a receipt that came from a PDF import (2 pages),
+        // set only by `PDFImportFlowTests`.
+        if let merchant = ProcessInfo.processInfo.environment["UITEST_SEED_PDF_MERCHANT"] {
+            let pageSize = CGSize(width: 300, height: 400)
+            let pdf = UIGraphicsPDFRenderer(bounds: CGRect(origin: .zero, size: pageSize)).pdfData { ctx in
+                for page in 1...2 {
+                    ctx.beginPage()
+                    ("Page \(page)" as NSString).draw(at: CGPoint(x: 20, y: 20), withAttributes: [.font: UIFont.systemFont(ofSize: 24)])
+                }
+            }
+            let photo = UIGraphicsImageRenderer(size: pageSize).image { ctx in
+                UIColor.white.setFill()
+                ctx.fill(CGRect(origin: .zero, size: pageSize))
+            }
+            let context = container.mainContext
+            context.insert(Receipt(date: Date(), totalCost: 7.77, merchant: merchant,
+                                   imageData: photo.jpegData(compressionQuality: 0.8), pdfData: pdf))
+            try? context.save()
+        }
+
         return container
     }
 }

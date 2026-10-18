@@ -23,6 +23,12 @@ final class Receipt {
     var group: String?
     var note: String?
     var imageData: Data?
+    /// The receipt's own pages when it came from a PDF import (just its
+    /// pages, or the whole file — see `PDFPageAssignment`). `imageData` then
+    /// holds its first page as a photo, so list/thumbnail code keeps working.
+    /// nil for photo receipts. Added 2026-10-18; optional, so existing
+    /// stores migrate automatically.
+    @Attribute(.externalStorage) var pdfData: Data?
     var createdAt: Date
     var updatedAt: Date
 
@@ -34,7 +40,8 @@ final class Receipt {
         category: String? = nil,
         group: String? = nil,
         note: String? = nil,
-        imageData: Data? = nil
+        imageData: Data? = nil,
+        pdfData: Data? = nil
     ) {
         self.date = date
         self.totalCost = totalCost
@@ -44,6 +51,7 @@ final class Receipt {
         self.group = group
         self.note = note
         self.imageData = imageData
+        self.pdfData = pdfData
         self.createdAt = Date()
         self.updatedAt = Date()
     }

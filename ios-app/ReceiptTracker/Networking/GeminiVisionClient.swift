@@ -19,13 +19,15 @@ enum GeminiVisionClient: VisionOCRClient {
 
     /// Exposed for unit testing without hitting the network.
     static func requestBody(images: [Data], mediaType: String, model: String) -> [String: Any] {
-        let imageParts: [[String: Any]] = images.map { imageData in
-            ["type": "image", "data": imageData.base64EncodedString(), "mime_type": mediaType]
-        }
+        let content: [[String: Any]] = ReceiptExtraction.labeledContent(
+            images: images,
+            text: { ["type": "text", "text": $0] },
+            image: { ["type": "image", "data": $0.base64EncodedString(), "mime_type": mediaType] }
+        )
         return [
             "model": model,
             "store": false,
-            "input": imageParts + [["type": "text", "text": ReceiptExtraction.prompt]],
+            "input": content,
             "response_format": [
                 "type": "text",
                 "mime_type": "application/json",

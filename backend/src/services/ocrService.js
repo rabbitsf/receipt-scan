@@ -73,8 +73,13 @@ const RECEIPT_FIELDS_SCHEMA = {
     merchant: { type: 'string', description: 'Merchant or vendor name' },
     total_cost: { type: 'number', description: 'Total amount charged, in dollars' },
     description: { type: 'string', description: 'Brief description of the item(s) purchased' },
+    pages: {
+      type: 'array',
+      items: { type: 'integer' },
+      description: 'Numbers of the images that show this receipt (Image 1 = 1)',
+    },
   },
-  required: ['date', 'merchant', 'total_cost', 'description'],
+  required: ['date', 'merchant', 'total_cost', 'description', 'pages'],
   additionalProperties: false,
 };
 
@@ -87,8 +92,9 @@ const RECEIPTS_SCHEMA = {
   additionalProperties: false,
 };
 
+// Must stay identical to iOS's `ReceiptExtraction.prompt` (an iOS unit test checks).
 const EXTRACTION_PROMPT =
-  'These images may contain one or more separate, distinct receipts (a multi-page receipt spans multiple images; unrelated receipts are separate). Identify EACH separate receipt and extract its date, merchant name, total cost, and a brief description of the item(s) purchased as its own entry. Do not merge multiple receipts into one entry. If there is only one receipt, return a single entry. Give your best reasonable guess for any field that is not perfectly clear.';
+  'These images may contain one or more separate, distinct receipts. The images are numbered in the order given (Image 1, Image 2, and so on). A multi-page receipt spans several images; unrelated receipts are separate. Identify EACH separate receipt and extract its date, merchant name, total cost, and a brief description of the item(s) purchased as its own entry, along with the numbers of the images that show it. Do not merge multiple receipts into one entry. If there is only one receipt, return a single entry. Give your best reasonable guess for any field that is not perfectly clear.';
 
 const MEDIA_TYPES = {
   '.jpg': 'image/jpeg',

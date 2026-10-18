@@ -18,17 +18,16 @@ enum OpenAIVisionClient: VisionOCRClient {
 
     /// Exposed for unit testing without hitting the network.
     static func requestBody(images: [Data], mediaType: String, model: String) -> [String: Any] {
-        let imageParts: [[String: Any]] = images.map { imageData in
-            [
-                "type": "input_image",
-                "image_url": "data:\(mediaType);base64,\(imageData.base64EncodedString())",
-            ]
-        }
+        let content: [[String: Any]] = ReceiptExtraction.labeledContent(
+            images: images,
+            text: { ["type": "input_text", "text": $0] },
+            image: { ["type": "input_image", "image_url": "data:\(mediaType);base64,\($0.base64EncodedString())"] }
+        )
         return [
             "model": model,
             "input": [[
                 "role": "user",
-                "content": imageParts + [["type": "input_text", "text": ReceiptExtraction.prompt]],
+                "content": content,
             ]],
             "text": [
                 "format": [

@@ -31,15 +31,14 @@ enum AnthropicVisionClient: VisionOCRClient {
 
     /// Exposed for unit testing without hitting the network.
     static func requestBody(images: [Data], mediaType: String, model: String) -> [String: Any] {
-        let imageBlocks: [[String: Any]] = images.map { imageData in
-            [
-                "type": "image",
-                "source": ["type": "base64", "media_type": mediaType, "data": imageData.base64EncodedString()],
-            ]
-        }
+        let content: [[String: Any]] = ReceiptExtraction.labeledContent(
+            images: images,
+            text: { ["type": "text", "text": $0] },
+            image: { ["type": "image", "source": ["type": "base64", "media_type": mediaType, "data": $0.base64EncodedString()]] }
+        )
         return [
             "model": model,
-            "max_tokens": 4096,
+            "max_tokens": ReceiptExtraction.maxOutputTokens,
             "output_config": [
                 "format": [
                     "type": "json_schema",
@@ -48,7 +47,7 @@ enum AnthropicVisionClient: VisionOCRClient {
             ],
             "messages": [[
                 "role": "user",
-                "content": imageBlocks + [["type": "text", "text": ReceiptExtraction.prompt]],
+                "content": content,
             ]],
         ]
     }

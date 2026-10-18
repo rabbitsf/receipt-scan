@@ -7,7 +7,7 @@ final class GoogleDriveUploaderTests: XCTestCase {
     func testMultipartUploadRequestHasBearerAuthAndBoundaryContentType() {
         let request = GoogleDriveUploader.multipartUploadRequest(
             filename: "2026-08-05_Costco.jpg",
-            imageData: Data("fake-jpeg-bytes".utf8),
+            fileData: Data("fake-jpeg-bytes".utf8),
             folderID: "folder123",
             accessToken: "tok_abc",
             boundary: "BOUNDARY123"
@@ -23,7 +23,7 @@ final class GoogleDriveUploaderTests: XCTestCase {
         let imageData = Data("fake-jpeg-bytes".utf8)
         let request = GoogleDriveUploader.multipartUploadRequest(
             filename: "2026-08-05_Costco.jpg",
-            imageData: imageData,
+            fileData: imageData,
             folderID: "folder123",
             accessToken: "tok_abc",
             boundary: "BOUNDARY123"
@@ -135,5 +135,23 @@ final class GoogleDriveUploaderTests: XCTestCase {
 
     private func makeHTTPResponse(status: Int) throws -> HTTPURLResponse {
         try XCTUnwrap(HTTPURLResponse(url: GoogleDriveUploader.filesEndpoint, statusCode: status, httpVersion: nil, headerFields: nil))
+    }
+
+    // MARK: - PDF receipts
+
+    func testReceiptWithPDFUploadsThePDF() throws {
+        let date = DateOnly.date(from: "2026-08-05")!
+        let pdf = try XCTUnwrap(DriveUploadItem.forReceipt(date: date, merchant: "Costco", fallbackID: "x", imageData: Data([1]), pdfData: Data([2])))
+        XCTAssertEqual(pdf.filename, "2026-08-05_Costco.pdf")
+        XCTAssertEqual(pdf.mimeType, "application/pdf")
+        XCTAssertEqual(pdf.fileData, Data([2]))
+
+        let photo = try XCTUnwrap(DriveUploadItem.forReceipt(date: date, merchant: "Costco", fallbackID: "x", imageData: Data([1]), pdfData: nil))
+        XCTAssertEqual(photo.filename, "2026-08-05_Costco.jpg")
+        XCTAssertEqual(photo.mimeType, "image/jpeg")
+        XCTAssertNil(DriveUploadItem.forReceipt(date: date, merchant: nil, fallbackID: "x", imageData: nil, pdfData: nil))
+
+        let request = GoogleDriveUploader.multipartUploadRequest(filename: pdf.filename, fileData: pdf.fileData, mimeType: pdf.mimeType, folderID: "f", accessToken: "t", boundary: "B")
+        XCTAssertTrue(String(decoding: request.httpBody!, as: UTF8.self).contains("Content-Type: application/pdf"))
     }
 }

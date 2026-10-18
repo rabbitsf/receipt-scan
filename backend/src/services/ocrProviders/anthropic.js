@@ -1,3 +1,4 @@
+import { labeledContent, MAX_OUTPUT_TOKENS } from './labeledContent.js';
 import Anthropic from '@anthropic-ai/sdk';
 
 let client;
@@ -13,18 +14,18 @@ function getClient() {
 export async function extractJsonText({ images, prompt, schema, model }) {
   const response = await getClient().messages.create({
     model,
-    max_tokens: 4096,
+    max_tokens: MAX_OUTPUT_TOKENS,
     output_config: { format: { type: 'json_schema', schema } },
     messages: [
       {
         role: 'user',
-        content: [
-          ...images.map(({ mediaType, base64 }) => ({
+        content: labeledContent(images, prompt, {
+          text: (t) => ({ type: 'text', text: t }),
+          image: ({ mediaType, base64 }) => ({
             type: 'image',
             source: { type: 'base64', media_type: mediaType, data: base64 },
-          })),
-          { type: 'text', text: prompt },
-        ],
+          }),
+        }),
       },
     ],
   });

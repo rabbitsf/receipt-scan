@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { listReceipts, deleteReceipt, bulkDeleteReceipts, getCategories, getGroups } from '../api.js';
+import { listReceipts, deleteReceipt, bulkDeleteReceipts, getCategories, getGroups, fileUrl } from '../api.js';
 import { CATEGORY_OPTIONS, mergeCategoryOptions } from '../categories.js';
 import { useServerInfo, EXPORT_FORMAT_LABELS } from '../serverInfo.js';
+import ReceiptPdfPages from './ReceiptPdfPages.jsx';
 
 const ICON_PROPS = {
   width: 16,
@@ -73,7 +74,7 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
   const [searchInput, setSearchInput] = useState('');
   const [query, setQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
-  const [viewingImageUrl, setViewingImageUrl] = useState(null);
+  const [viewing, setViewing] = useState(null); // { image } or { pdf } URL
   const [categoryOptions, setCategoryOptions] = useState(CATEGORY_OPTIONS);
   const [groupOptions, setGroupOptions] = useState([]);
   const { exportFormats } = useServerInfo();
@@ -341,14 +342,14 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
                 </td>
                 <td>
                   <div className="row-actions">
-                    {r.imagePath && (
+                    {(r.imagePath || r.pdfPath) && (
                       <button
                         type="button"
                         className="icon-button secondary"
                         title="View Receipt"
                         aria-label="View Receipt"
                         onClick={() =>
-                          setViewingImageUrl(`/api/receipts/images/${r.imagePath.replace(/^uploads\//, '')}`)
+                          setViewing(r.pdfPath ? { pdf: fileUrl(r.pdfPath) } : { image: fileUrl(r.imagePath) })
                         }
                       >
                         <ViewIcon />
@@ -381,13 +382,17 @@ export default function ReceiptList({ onAddPhoto, onAddManual, onEdit, onDashboa
         </div>
       )}
 
-      {viewingImageUrl && (
-        <div className="image-modal-overlay" onClick={() => setViewingImageUrl(null)}>
+      {viewing && (
+        <div className="image-modal-overlay" onClick={() => setViewing(null)}>
           <div className="image-modal-content" onClick={(e) => e.stopPropagation()}>
-            <button type="button" className="secondary image-modal-close" onClick={() => setViewingImageUrl(null)}>
+            <button type="button" className="secondary image-modal-close" onClick={() => setViewing(null)}>
               Close
             </button>
-            <img className="image-modal-img" src={viewingImageUrl} alt="Original receipt" />
+            {viewing.pdf ? (
+              <ReceiptPdfPages url={viewing.pdf} />
+            ) : (
+              <img className="image-modal-img" src={viewing.image} alt="Original receipt" />
+            )}
           </div>
         </div>
       )}

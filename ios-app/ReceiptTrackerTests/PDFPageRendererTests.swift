@@ -1,60 +1,51 @@
 import XCTest
+import PDFKit
 @testable import ReceiptTracker
 
-final class PDFPageRendererTests: XCTestCase {
-    /// Synthesizes a small PDF in-memory via `UIGraphicsPDFRenderer` rather
-    /// than committing a binary fixture file — consistent with how this
-    /// codebase already prefers generating test data in-code.
-    private func writePDF(pageCount: Int, pageSize: CGSize) -> URL {
-        let renderer = UIGraphicsPDFRenderer(bounds: CGRect(origin: .zero, size: pageSize))
-        let data = renderer.pdfData { context in
-            for _ in 0..<pageCount {
+/// Shared test helper: a PDF made in code (no binary fixtures), each page
+/// filled with noise when `noisy` so its JPEG isn't trivially small.
+enum TestPDF {
+    static func make(pageCount: Int, pageSize: CGSize = CGSize(width: 612, height: 792), noisy: Bool = false) -> Data {
+        UIGraphicsPDFRenderer(bounds: CGRect(origin: .zero, size: pageSize)).pdfData { context in
+            for page in 0..<pageCount {
                 context.beginPage()
                 UIColor.white.setFill()
                 context.fill(CGRect(origin: .zero, size: pageSize))
+                ("Page \(page + 1)" as NSString).draw(at: CGPoint(x: 40, y: 40), withAttributes: [.font: UIFont.systemFont(ofSize: 30)])
+                if noisy {
+                    for _ in 0..<400 {
+                        UIColor(hue: .random(in: 0...1), saturation: 1, brightness: 1, alpha: 1).setFill()
+                        context.fill(CGRect(x: .random(in: 0...pageSize.width), y: .random(in: 0...pageSize.height), width: 30, height: 30))
+                    }
+                }
             }
         }
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).pdf")
-        try! data.write(to: url)
-        return url
     }
 
-    func testRenderPagesOfSinglePagePDFReturnsOneImageCappedAtMaxDimensionPreservingAspectRatio() {
-        let pageSize = CGSize(width: 600, height: 800)
-        let url = writePDF(pageCount: 1, pageSize: pageSize)
+    static func document(pageCount: Int, noisy: Bool = false) -> PDFDocument {
+        PDFDocument(data: make(pageCount: pageCount, noisy: noisy))!
+    }
+}
 
-        let images = PDFPageRenderer.renderPages(of: url)
-
-        XCTAssertEqual(images.count, 1)
-        guard let image = images.first else { return }
-        XCTAssertEqual(max(image.size.width, image.size.height), 2200, accuracy: 1)
-        let originalAspect = pageSize.width / pageSize.height
-        let renderedAspect = image.size.width / image.size.height
-        XCTAssertEqual(originalAspect, renderedAspect, accuracy: 0.01)
+final class PDFPageRendererTests: XCTestCase {
+    func testRendersRequestedPagesAtExactPixelSizePreservingAspect() throws {
+        let document = TestPDF.document(pageCount: 3)
+        let jpegs = PDFPageRenderer.renderJPEGs(of: document, pages: 0..<2, maxEdge: 2200, quality: 0.8)
+        XCTAssertEqual(jpegs.count, 2)
+        let image = try XCTUnwrap(UIImage(data: jpegs[0])?.cgImage)
+        XCTAssertEqual(image.height, 2200) // pixels, regardless of screen scale
+        XCTAssertEqual(Double(image.width) / Double(image.height), 612.0 / 792.0, accuracy: 0.01)
     }
 
-    func testRenderPagesReturnsAllPagesWhenUnderCap() {
-        let url = writePDF(pageCount: 2, pageSize: CGSize(width: 400, height: 400))
-
-        XCTAssertEqual(PDFPageRenderer.renderPages(of: url).count, 2)
+    func testRenderedSizesMatchRenderingWithoutDrawing() {
+        let document = TestPDF.document(pageCount: 2)
+        let sizes = PDFPageRenderer.renderedSizes(of: document, pages: 0..<2, maxEdge: 2000)
+        XCTAssertEqual(sizes.count, 2)
+        XCTAssertEqual(sizes[0].height, 2000)
+        XCTAssertEqual(sizes[0].width, 1545)
     }
 
-    func testRenderPagesCapsAtMaxPagesForLongerPDFs() {
-        let url = writePDF(pageCount: PDFPageRenderer.maxPages + 3, pageSize: CGSize(width: 400, height: 400))
-
-        XCTAssertEqual(PDFPageRenderer.renderPages(of: url).count, PDFPageRenderer.maxPages)
-    }
-
-    func testRenderPagesOfCorruptFileReturnsEmptyArray() {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).pdf")
-        try! Data("not a pdf".utf8).write(to: url)
-
-        XCTAssertTrue(PDFPageRenderer.renderPages(of: url).isEmpty)
-    }
-
-    func testRenderPagesOfMissingFileReturnsEmptyArray() {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).pdf")
-
-        XCTAssertTrue(PDFPageRenderer.renderPages(of: url).isEmpty)
+    func testCorruptDataIsNotADocument() {
+        XCTAssertNil(PDFDocument(data: Data("not a pdf".utf8)))
     }
 }

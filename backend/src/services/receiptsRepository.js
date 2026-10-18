@@ -13,6 +13,7 @@ function rowToReceipt(row) {
     group: row.group,
     note: row.note,
     imagePath: row.image_path,
+    pdfPath: row.pdf_path ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -21,8 +22,8 @@ function rowToReceipt(row) {
 // `group` is a SQL reserved word — double-quoted everywhere it's
 // referenced as a column/parameter name below.
 const insertStmt = db.prepare(`
-  INSERT INTO receipts (date, total_cost_cents, merchant, description, category, "group", note, image_path)
-  VALUES (@date, @total_cost_cents, @merchant, @description, @category, @group, @note, @image_path)
+  INSERT INTO receipts (date, total_cost_cents, merchant, description, category, "group", note, image_path, pdf_path)
+  VALUES (@date, @total_cost_cents, @merchant, @description, @category, @group, @note, @image_path, @pdf_path)
 `);
 
 const selectByIdStmt = db.prepare('SELECT * FROM receipts WHERE id = ?');
@@ -37,6 +38,7 @@ const updateStmt = db.prepare(`
       "group" = @group,
       note = @note,
       image_path = @image_path,
+      pdf_path = @pdf_path,
       updated_at = datetime('now')
   WHERE id = @id
 `);
@@ -89,7 +91,7 @@ export function getReceiptsByIds(ids) {
   return stmt.all(...ids).map(rowToReceipt);
 }
 
-export function createReceipt({ date, totalCost, merchant, description, category, group, note, imagePath }) {
+export function createReceipt({ date, totalCost, merchant, description, category, group, note, imagePath, pdfPath }) {
   const info = insertStmt.run({
     date,
     total_cost_cents: toCents(totalCost),
@@ -99,11 +101,14 @@ export function createReceipt({ date, totalCost, merchant, description, category
     group: group ?? null,
     note: note ?? null,
     image_path: imagePath ?? null,
+    pdf_path: pdfPath ?? null,
   });
   return getReceiptById(info.lastInsertRowid);
 }
 
-export function updateReceipt(id, { date, totalCost, merchant, description, category, group, note, imagePath }) {
+// `pdfPath`: undefined keeps the current PDF, null removes it (e.g. the photo
+// was replaced by a camera/library photo).
+export function updateReceipt(id, { date, totalCost, merchant, description, category, group, note, imagePath, pdfPath }) {
   const existing = selectByIdStmt.get(id);
   if (!existing) return null;
 
@@ -117,6 +122,7 @@ export function updateReceipt(id, { date, totalCost, merchant, description, cate
     group: group ?? null,
     note: note ?? null,
     image_path: imagePath ?? existing.image_path,
+    pdf_path: pdfPath === undefined ? existing.pdf_path : pdfPath,
   });
   return getReceiptById(id);
 }
@@ -140,6 +146,10 @@ export function getDistinctGroups() {
     .prepare('SELECT DISTINCT "group" FROM receipts WHERE "group" IS NOT NULL AND "group" != \'\' ORDER BY "group"')
     .all();
   return rows.map((r) => r.group);
+}
+
+export function countReceiptsByPdfPath(pdfPath) {
+  return db.prepare('SELECT COUNT(*) AS count FROM receipts WHERE pdf_path = ?').get(pdfPath).count;
 }
 
 export function countReceiptsByImagePath(imagePath) {

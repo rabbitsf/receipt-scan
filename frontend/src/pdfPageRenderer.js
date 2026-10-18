@@ -3,40 +3,53 @@ import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
-// Page cap, mirrors iOS's `PDFPageRenderer.maxPages` — keeps an unusually
-// long PDF from blowing up OCR request cost/latency. Single source of
-// truth for the warning shown before scanning (see `UploadReceipt.jsx`).
-export const MAX_PAGES = 5;
+// Renders PDF pages to JPEG Blobs so they flow through the same OCR/upload
+// pipeline as a photo. How many pages, and at what size/quality, is decided
+// by `pdfScanBudget.js`; this file only draws. Mirrors iOS's `PDFPageRenderer`.
 
-// Longest-edge cap in pixels, same spirit as the JPEG compression already
-// used for camera/library photo uploads — good enough for OCR without an
-// oversized upload.
-const MAX_DIMENSION = 2200;
+// The "Scan first N pages" choice in the PDF cost popup (iOS: `quickScanPages`).
+export const QUICK_SCAN_PAGES = 5;
 
-// Renders each page of a PDF (up to MAX_PAGES) to a JPEG Blob, so it can
-// flow through the same OCR/upload pipeline as a camera/library photo —
-// there is no PDF/document upload path, only images.
-export async function renderPdfPages(file) {
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  const pageCount = Math.min(pdf.numPages, MAX_PAGES);
+export async function loadPdf(file) {
+  return pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+}
 
+function scaleFor(page, maxEdge) {
+  const base = page.getViewport({ scale: 1 });
+  return maxEdge / Math.max(base.width, base.height);
+}
+
+// Pixel size of pages 1..count at `maxEdge` — for cost estimates, no drawing.
+export async function renderedSizes(pdf, count, maxEdge) {
+  const sizes = [];
+  for (let n = 1; n <= count; n++) {
+    const page = await pdf.getPage(n);
+    const viewport = page.getViewport({ scale: scaleFor(page, maxEdge) });
+    sizes.push({ width: Math.round(viewport.width), height: Math.round(viewport.height) });
+  }
+  return sizes;
+}
+
+// JPEG Blob of one page (1-based).
+export async function renderPage(pdf, pageNumber, maxEdge, quality) {
+  const page = await pdf.getPage(pageNumber);
+  const viewport = page.getViewport({ scale: scaleFor(page, maxEdge) });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(viewport.width);
+  canvas.height = Math.round(viewport.height);
+  const context = canvas.getContext('2d');
+  context.fillStyle = '#fff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvasContext: context, viewport }).promise;
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+}
+
+// JPEG Blobs of pages 1..count.
+export async function renderPages(pdf, count, maxEdge, quality) {
   const blobs = [];
-  for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
-    const page = await pdf.getPage(pageNumber);
-    const baseViewport = page.getViewport({ scale: 1 });
-    const scale = MAX_DIMENSION / Math.max(baseViewport.width, baseViewport.height);
-    const viewport = page.getViewport({ scale });
-
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(viewport.width);
-    canvas.height = Math.round(viewport.height);
-    const context = canvas.getContext('2d');
-    await page.render({ canvasContext: context, viewport }).promise;
-
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+  for (let n = 1; n <= count; n++) {
+    const blob = await renderPage(pdf, n, maxEdge, quality);
     if (blob) blobs.push(blob);
   }
-
   return blobs;
 }

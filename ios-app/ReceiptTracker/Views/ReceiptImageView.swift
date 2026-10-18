@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import PDFKit
 
 /// Full-size, unconstrained receipt photo viewer — ports the web app's
 /// image modal (`ReceiptList.jsx`'s "View Receipt" button, Section 3.8:
@@ -11,15 +12,17 @@ import UIKit
 /// Photo" button (v1.2.1) — there's no filesystem download concept on iOS;
 /// saving the already-on-device image into the user's Photos library is the
 /// closest match to "get a copy of this outside the app".
+///
+/// A receipt that came from a PDF shows all of its pages instead, with Share
+/// (Save to Files, AirDrop, …) in place of "Save to Photos".
 struct ReceiptImageView: View {
-    let imageData: Data
-    /// Filename to use if this photo is uploaded to Google Drive. Defaults
-    /// to today's date + a random fallback ID (still produces a valid,
-    /// non-colliding name) so call sites without a persisted `Receipt` yet
-    /// (e.g. `ReceiptFormView`'s in-progress photo preview) aren't required
-    /// to supply one — but real call sites should pass the receipt's actual
-    /// date/merchant for a meaningful name.
-    var uploadFilename: String = DriveUploadFilename.make(date: Date(), merchant: nil, fallbackID: UUID().uuidString)
+    let imageData: Data?
+    var pdfData: Data? = nil
+    /// What "Upload to Drive" sends (`DriveUploadItem.forReceipt`). Real
+    /// call sites pass the receipt's date/merchant for a meaningful name.
+    var driveItem: DriveUploadItem? = nil
+
+    @State private var shareURL: URL?
 
     @Environment(\.dismiss) private var dismiss
     @State private var statusMessage: String?
@@ -48,7 +51,10 @@ struct ReceiptImageView: View {
                     // of how the image content inside sizes itself.
                     Color.black
 
-                    if let uiImage = UIImage(data: imageData) {
+                    if let pdfData {
+                        ReceiptPDFView(data: pdfData)
+                            .accessibilityIdentifier("receiptPDFView")
+                    } else if let imageData, let uiImage = UIImage(data: imageData) {
                         Image(uiImage: uiImage)
                             .resizable()
                             .scaledToFit()
@@ -113,7 +119,7 @@ struct ReceiptImageView: View {
                 }
             }
             .ignoresSafeArea(edges: .bottom)
-            .navigationTitle("Receipt Photo")
+            .navigationTitle(pdfData == nil ? "Receipt Photo" : "Receipt PDF")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
@@ -122,12 +128,21 @@ struct ReceiptImageView: View {
                         .accessibilityIdentifier("closeReceiptImageButton")
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        saveToPhotos()
-                    } label: {
-                        Label("Save to Photos", systemImage: "square.and.arrow.down")
+                    if pdfData != nil {
+                        if let shareURL {
+                            ShareLink(item: shareURL) {
+                                Label("Share", systemImage: "square.and.arrow.up")
+                            }
+                            .accessibilityIdentifier("sharePDFButton")
+                        }
+                    } else {
+                        Button {
+                            saveToPhotos()
+                        } label: {
+                            Label("Save to Photos", systemImage: "square.and.arrow.down")
+                        }
+                        .accessibilityIdentifier("savePhotoButton")
                     }
-                    .accessibilityIdentifier("savePhotoButton")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
@@ -143,6 +158,7 @@ struct ReceiptImageView: View {
                     .accessibilityIdentifier("uploadToDriveButton")
                 }
             }
+            .onAppear(perform: writeShareFile)
             .safeAreaInset(edge: .bottom) {
                 if let statusMessage {
                     Text(statusMessage)
@@ -169,8 +185,20 @@ struct ReceiptImageView: View {
         )
     }
 
+    private var uploadItem: DriveUploadItem? {
+        driveItem ?? DriveUploadItem.forReceipt(date: Date(), merchant: nil, fallbackID: UUID().uuidString, imageData: imageData, pdfData: pdfData)
+    }
+
+    /// ShareLink needs a file; name it like the Drive upload.
+    private func writeShareFile() {
+        guard let pdfData, shareURL == nil else { return }
+        let name = uploadItem?.filename ?? "Receipt.pdf"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+        if (try? pdfData.write(to: url)) != nil { shareURL = url }
+    }
+
     private func saveToPhotos() {
-        guard let uiImage = UIImage(data: imageData) else { return }
+        guard let imageData, let uiImage = UIImage(data: imageData) else { return }
         UIImageWriteToSavedPhotosAlbum(uiImage, nil, nil, nil)
         statusMessage = "Saved to Photos"
     }
@@ -184,7 +212,8 @@ struct ReceiptImageView: View {
         statusMessage = nil
         Task {
             do {
-                try await GoogleDriveUploader.uploadOne(imageData: imageData, filename: uploadFilename)
+                guard let uploadItem else { throw GoogleDriveUploadError.invalidResponse }
+                try await GoogleDriveUploader.uploadOne(uploadItem)
                 statusMessage = "Uploaded to Google Drive"
             } catch {
                 statusMessage = error.localizedDescription
@@ -192,6 +221,23 @@ struct ReceiptImageView: View {
             isUploadingToDrive = false
         }
     }
+}
+
+/// All pages of a receipt PDF, scrollable and zoomable (PDFKit).
+struct ReceiptPDFView: UIViewRepresentable {
+    let data: Data
+
+    func makeUIView(context: Context) -> PDFView {
+        let view = PDFView()
+        view.autoScales = true
+        view.displayMode = .singlePageContinuous
+        view.displayDirection = .vertical
+        view.backgroundColor = .black
+        view.document = PDFDocument(data: data)
+        return view
+    }
+
+    func updateUIView(_ view: PDFView, context: Context) {}
 }
 
 #Preview {

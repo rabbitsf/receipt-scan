@@ -31,7 +31,9 @@ db.exec(`
 // `group` is a SQL reserved word (GROUP BY) — always double-quote it as an
 // identifier, both here and in every query that references the column.
 const existingColumns = new Set(db.prepare('PRAGMA table_info(receipts)').all().map((c) => c.name));
-for (const column of ['category', 'note', 'group']) {
+// `pdf_path` (2026-10-18): the receipt's own pages when it came from a PDF
+// import (`uploads/<uuid>.pdf`); `image_path` then holds its first page.
+for (const column of ['category', 'note', 'group', 'pdf_path']) {
   if (!existingColumns.has(column)) {
     db.exec(`ALTER TABLE receipts ADD COLUMN "${column}" TEXT`);
   }

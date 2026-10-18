@@ -1,3 +1,5 @@
+import { labeledContent } from './labeledContent.js';
+
 // Google Gemini wire format only (Interactions API with a JSON-schema
 // `response_format`; generateContent is now labelled legacy), via plain
 // fetch — no SDK dependency. `store: false` keeps each scan stateless.
@@ -12,10 +14,10 @@ export async function extractJsonText({ images, prompt, schema, model }) {
     body: JSON.stringify({
       model,
       store: false,
-      input: [
-        ...images.map(({ mediaType, base64 }) => ({ type: 'image', data: base64, mime_type: mediaType })),
-        { type: 'text', text: prompt },
-      ],
+      input: labeledContent(images, prompt, {
+        text: (t) => ({ type: 'text', text: t }),
+        image: ({ mediaType, base64 }) => ({ type: 'image', data: base64, mime_type: mediaType }),
+      }),
       response_format: { type: 'text', mime_type: 'application/json', schema },
     }),
   });

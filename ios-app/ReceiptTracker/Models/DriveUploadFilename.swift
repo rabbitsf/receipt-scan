@@ -9,11 +9,11 @@ enum DriveUploadFilename {
     /// stable per-receipt string, e.g. derived from its persistent model
     /// ID) in place of the merchant when it's nil/blank, so same-day
     /// no-merchant receipts still get distinct names.
-    static func make(date: Date, merchant: String?, fallbackID: String) -> String {
+    static func make(date: Date, merchant: String?, fallbackID: String, fileExtension: String = "jpg") -> String {
         let datePart = DateOnly.string(from: date)
         let sanitizedMerchant = sanitize(merchant ?? "")
         let namePart = sanitizedMerchant.isEmpty ? fallbackID : sanitizedMerchant
-        return "\(datePart)_\(namePart).jpg"
+        return "\(datePart)_\(namePart).\(fileExtension)"
     }
 
     /// Replaces characters that are invalid or awkward in filenames on

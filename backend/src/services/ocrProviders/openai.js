@@ -1,3 +1,5 @@
+import { labeledContent } from './labeledContent.js';
+
 // OpenAI wire format only (Responses API + strict Structured Outputs), via
 // plain fetch — no SDK dependency. Mirrors iOS's `OpenAIVisionClient.swift`.
 // Returns the model's raw JSON text.
@@ -13,13 +15,10 @@ export async function extractJsonText({ images, prompt, schema, model }) {
       input: [
         {
           role: 'user',
-          content: [
-            ...images.map(({ mediaType, base64 }) => ({
-              type: 'input_image',
-              image_url: `data:${mediaType};base64,${base64}`,
-            })),
-            { type: 'input_text', text: prompt },
-          ],
+          content: labeledContent(images, prompt, {
+            text: (t) => ({ type: 'input_text', text: t }),
+            image: ({ mediaType, base64 }) => ({ type: 'input_image', image_url: `data:${mediaType};base64,${base64}` }),
+          }),
         },
       ],
       text: { format: { type: 'json_schema', name: 'receipts', schema, strict: true } },

@@ -28,10 +28,23 @@ private struct DriveErrorResponse: Decodable {
     let error: ErrorDetail
 }
 
-/// One receipt's photo, ready to upload.
+/// One receipt's file, ready to upload: its PDF when it came from a PDF
+/// import, otherwise its photo.
 struct DriveUploadItem {
     let filename: String
-    let imageData: Data
+    let fileData: Data
+    var mimeType = "image/jpeg"
+
+    /// THE rule for what a receipt uploads to Drive (single and bulk).
+    /// nil when it has neither a PDF nor a photo.
+    static func forReceipt(date: Date, merchant: String?, fallbackID: String, imageData: Data?, pdfData: Data?) -> DriveUploadItem? {
+        if let pdfData {
+            return DriveUploadItem(filename: DriveUploadFilename.make(date: date, merchant: merchant, fallbackID: fallbackID, fileExtension: "pdf"),
+                                   fileData: pdfData, mimeType: "application/pdf")
+        }
+        guard let imageData else { return nil }
+        return DriveUploadItem(filename: DriveUploadFilename.make(date: date, merchant: merchant, fallbackID: fallbackID), fileData: imageData)
+    }
 }
 
 /// Result of a best-effort bulk upload — every item is attempted
@@ -74,7 +87,7 @@ enum GoogleDriveUploader {
         var successCount = 0
         for item in items {
             do {
-                try await upload(imageData: item.imageData, filename: item.filename, folderID: folderID, accessToken: accessToken, session: session)
+                try await upload(item, folderID: folderID, accessToken: accessToken, session: session)
                 successCount += 1
             } catch {
                 // Best-effort: one item's failure doesn't stop the rest —
@@ -87,8 +100,8 @@ enum GoogleDriveUploader {
     /// Convenience for the single-photo entry point (`ReceiptImageView`) —
     /// same underlying path as `uploadAll`, just unwraps the one-item
     /// result into a thrown error on failure.
-    static func uploadOne(imageData: Data, filename: String, session: URLSession = .shared) async throws {
-        let result = try await uploadAll([DriveUploadItem(filename: filename, imageData: imageData)], session: session)
+    static func uploadOne(_ item: DriveUploadItem, session: URLSession = .shared) async throws {
+        let result = try await uploadAll([item], session: session)
         guard result.successCount == 1 else {
             throw GoogleDriveUploadError.invalidResponse
         }
@@ -169,9 +182,9 @@ enum GoogleDriveUploader {
 
     // MARK: - File upload
 
-    private static func upload(imageData: Data, filename: String, folderID: String, accessToken: String, session: URLSession) async throws {
+    private static func upload(_ item: DriveUploadItem, folderID: String, accessToken: String, session: URLSession) async throws {
         let boundary = UUID().uuidString
-        let request = multipartUploadRequest(filename: filename, imageData: imageData, folderID: folderID, accessToken: accessToken, boundary: boundary)
+        let request = multipartUploadRequest(filename: item.filename, fileData: item.fileData, mimeType: item.mimeType, folderID: folderID, accessToken: accessToken, boundary: boundary)
         let (data, response) = try await session.data(for: request)
         _ = try parseUploadResponse(from: data, response: response)
     }
@@ -180,7 +193,7 @@ enum GoogleDriveUploader {
     /// "multipart upload" format: one `application/json` part with the
     /// file's metadata (name + parent folder), one part with the raw image
     /// bytes.
-    static func multipartUploadRequest(filename: String, imageData: Data, folderID: String, accessToken: String, boundary: String) -> URLRequest {
+    static func multipartUploadRequest(filename: String, fileData: Data, mimeType: String = "image/jpeg", folderID: String, accessToken: String, boundary: String) -> URLRequest {
         var request = URLRequest(url: uploadEndpoint)
         request.httpMethod = "POST"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -193,8 +206,8 @@ enum GoogleDriveUploader {
         body.append("Content-Type: application/json; charset=UTF-8\r\n\r\n".data(using: .utf8)!)
         body.append(metadataJSON)
         body.append("\r\n--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
-        body.append(imageData)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(fileData)
         body.append("\r\n--\(boundary)--".data(using: .utf8)!)
 
         request.httpBody = body

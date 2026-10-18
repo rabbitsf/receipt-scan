@@ -1,5 +1,10 @@
 const BASE = '/api/receipts';
 
+// URL of a stored photo or PDF (`uploads/<file>`), served by both servers.
+export function fileUrl(path) {
+  return path ? `${BASE}/images/${path.replace(/^uploads\//, '')}` : null;
+}
+
 async function parseErrorResponse(res, fallback) {
   const body = await res.json().catch(() => ({}));
   if (Array.isArray(body.errors) && body.errors.length) return body.errors.join(', ');
@@ -12,6 +17,27 @@ export async function uploadReceiptImage(file) {
 
   const res = await fetch(`${BASE}/upload`, { method: 'POST', body: formData });
   if (!res.ok) throw new Error(await parseErrorResponse(res, 'Upload failed'));
+  return res.json();
+}
+
+// A receipt's own pages from a PDF import (built in the browser). Returns { pdfPath }.
+export async function uploadReceiptPdf(blob, filename = 'receipt.pdf') {
+  const formData = new FormData();
+  formData.append('image', new File([blob], filename, { type: 'application/pdf' }));
+  const res = await fetch(`${BASE}/upload`, { method: 'POST', body: formData });
+  if (!res.ok) throw new Error(await parseErrorResponse(res, 'Upload failed'));
+  return res.json();
+}
+
+// Estimated cost and the selected provider's request limits for scanning
+// images of these sizes: { inputTokens, outputTokens, usd|null, providerName, model, limits }.
+export async function estimateScan(pageSizes) {
+  const res = await fetch(`${BASE}/extract/estimate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pageSizes }),
+  });
+  if (!res.ok) throw new Error(await parseErrorResponse(res, 'Failed to estimate scan cost'));
   return res.json();
 }
 

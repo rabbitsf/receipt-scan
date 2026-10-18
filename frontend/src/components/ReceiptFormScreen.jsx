@@ -46,6 +46,7 @@ export default function ReceiptFormScreen({ receiptId, onDone }) {
         <ReceiptForm
           initialValues={receipt ?? undefined}
           imagePath={receipt?.imagePath ?? null}
+          pdfPath={receipt?.pdfPath ?? null}
           submitLabel={isEditing ? 'Save Changes' : 'Save Receipt'}
           onSubmit={handleSubmit}
           onCancel={() => onDone(null)}

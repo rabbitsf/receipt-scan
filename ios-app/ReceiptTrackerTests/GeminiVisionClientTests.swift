@@ -17,12 +17,13 @@ final class GeminiVisionClientTests: XCTestCase {
         XCTAssertEqual(schema["required"] as? [String], ["receipts"])
 
         let input = try XCTUnwrap(body["input"] as? [[String: Any]])
-        XCTAssertEqual(input.count, 2)
-        XCTAssertEqual(input[0]["type"] as? String, "image")
-        XCTAssertEqual(input[0]["data"] as? String, Data("fake-image".utf8).base64EncodedString())
-        XCTAssertEqual(input[0]["mime_type"] as? String, "image/jpeg")
-        XCTAssertEqual(input[1]["type"] as? String, "text")
-        XCTAssertEqual(input[1]["text"] as? String, ReceiptExtraction.prompt)
+        XCTAssertEqual(input.count, 3) // "Image 1:" label, image, prompt
+        XCTAssertEqual(input[0]["text"] as? String, "Image 1:")
+        XCTAssertEqual(input[1]["type"] as? String, "image")
+        XCTAssertEqual(input[1]["data"] as? String, Data("fake-image".utf8).base64EncodedString())
+        XCTAssertEqual(input[1]["mime_type"] as? String, "image/jpeg")
+        XCTAssertEqual(input[2]["type"] as? String, "text")
+        XCTAssertEqual(input[2]["text"] as? String, ReceiptExtraction.prompt)
     }
 
     func testRequestBodyWithMultipleImagesIncludesOnePartPerImage() throws {
@@ -30,11 +31,12 @@ final class GeminiVisionClientTests: XCTestCase {
         let body = GeminiVisionClient.requestBody(images: images, mediaType: "image/jpeg", model: "gemini-test")
 
         let input = try XCTUnwrap(body["input"] as? [[String: Any]])
-        XCTAssertEqual(input.count, 4)
+        XCTAssertEqual(input.count, 7) // label + image per page, then the prompt
         for (index, imageData) in images.enumerated() {
-            XCTAssertEqual(input[index]["data"] as? String, imageData.base64EncodedString())
+            XCTAssertEqual(input[2 * index]["text"] as? String, "Image \(index + 1):")
+            XCTAssertEqual(input[2 * index + 1]["data"] as? String, imageData.base64EncodedString())
         }
-        XCTAssertEqual(input[3]["type"] as? String, "text")
+        XCTAssertEqual(input[6]["text"] as? String, ReceiptExtraction.prompt)
     }
 
     func testMakeRequestUsesGoogleAPIKeyHeader() throws {

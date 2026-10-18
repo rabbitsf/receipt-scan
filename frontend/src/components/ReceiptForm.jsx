@@ -1,10 +1,17 @@
 import { useEffect, useState } from 'react';
-import { uploadReceiptImage, extractReceiptFields, getCategories, getGroups } from '../api.js';
+import { uploadReceiptImage, extractReceiptFields, getCategories, getGroups, fileUrl } from '../api.js';
 import { emptyReceiptValues as emptyValues, toFormValues } from '../receiptFields.js';
 import { CATEGORY_OPTIONS, CUSTOM_CATEGORY_VALUE, mergeCategoryOptions } from '../categories.js';
 import { CUSTOM_GROUP_VALUE } from '../groups.js';
 
-export default function ReceiptForm({ initialValues, imagePath: initialImagePath, onSubmit, submitLabel = 'Save', onCancel }) {
+export default function ReceiptForm({
+  initialValues,
+  imagePath: initialImagePath,
+  pdfPath: initialPdfPath,
+  onSubmit,
+  submitLabel = 'Save',
+  onCancel,
+}) {
   const [values, setValues] = useState({ ...emptyValues, ...initialValues });
   const [categoryOptions, setCategoryOptions] = useState(CATEGORY_OPTIONS);
   const [categoryMode, setCategoryMode] = useState(() => {
@@ -14,6 +21,8 @@ export default function ReceiptForm({ initialValues, imagePath: initialImagePath
   const [groupOptions, setGroupOptions] = useState([]);
   const [groupMode, setGroupMode] = useState(() => (initialValues?.group ? 'custom' : 'select'));
   const [imagePath, setImagePath] = useState(initialImagePath ?? null);
+  // The receipt's own pages when it came from a PDF import (see `pdfImport.js`).
+  const [pdfPath, setPdfPath] = useState(initialPdfPath ?? null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [extractingImage, setExtractingImage] = useState(false);
   const [imageError, setImageError] = useState(null);
@@ -21,7 +30,8 @@ export default function ReceiptForm({ initialValues, imagePath: initialImagePath
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  const imageUrl = imagePath ? `/api/receipts/images/${imagePath.replace(/^uploads\//, '')}` : null;
+  const imageUrl = fileUrl(imagePath);
+  const pdfUrl = fileUrl(pdfPath);
 
   useEffect(() => {
     getCategories()
@@ -83,6 +93,7 @@ export default function ReceiptForm({ initialValues, imagePath: initialImagePath
     try {
       ({ imagePath: uploadedPath } = await uploadReceiptImage(file));
       setImagePath(uploadedPath);
+      setPdfPath(null); // a photo replaces the receipt's PDF
     } catch (err) {
       setImageError(err.message);
       return;
@@ -111,9 +122,9 @@ export default function ReceiptForm({ initialValues, imagePath: initialImagePath
   }
 
   function handleDownloadPhoto() {
-    if (!imageUrl) return;
+    if (!imageUrl && !pdfUrl) return;
     const link = document.createElement('a');
-    link.href = imageUrl;
+    link.href = pdfUrl ?? imageUrl;
     link.download = '';
     link.click();
   }
@@ -132,6 +143,7 @@ export default function ReceiptForm({ initialValues, imagePath: initialImagePath
         group: values.group || null,
         note: values.note || null,
         imagePath: imagePath ?? null,
+        pdfPath: pdfPath ?? null,
       });
     } catch (err) {
       setError(err.message);
@@ -146,8 +158,13 @@ export default function ReceiptForm({ initialValues, imagePath: initialImagePath
         <>
           <img className="receipt-thumbnail" src={imageUrl} alt="Receipt" />
           <div className="form-actions">
+            {pdfUrl && (
+              <a className="button-link secondary" href={pdfUrl} target="_blank" rel="noreferrer">
+                View PDF
+              </a>
+            )}
             <button type="button" className="secondary" onClick={handleDownloadPhoto}>
-              Download Photo
+              {pdfUrl ? 'Download PDF' : 'Download Photo'}
             </button>
           </div>
         </>

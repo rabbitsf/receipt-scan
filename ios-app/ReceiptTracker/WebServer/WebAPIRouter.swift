@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import UIKit
+import PDFKit
 
 /// The `/api/*` contract of the Mac backend (`backend/src/routes/receipts.js`
 /// and `settings.js`), re-implemented on the phone so the bundled React web
@@ -25,7 +26,6 @@ final class WebAPIRouter {
     private var modelsByID: [Int: PersistentIdentifier] = [:]
     private var nextID = 1
 
-    static let maxExtractImages = PDFPageRenderer.maxPages
     private static let allowedUploadTypes: Set<String> = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]
     private static let receiptImagePrefix = "receipt-"
 
@@ -77,6 +77,7 @@ final class WebAPIRouter {
         case ("POST", "upload", 1): return upload(request)
         case ("GET", "images", 2): return image(named: path[1])
         case ("POST", "extract", 1): return await extractFields(request)
+        case ("POST", "extract", 2) where path[1] == "estimate": return estimate(request)
         case ("POST", "bulk-delete", 1): return bulkDelete(request)
         case ("GET", "export", 1): return export(request)
         case ("GET", "summary", 1): return summary(request)
@@ -118,7 +119,8 @@ final class WebAPIRouter {
             category: input.category ?? nil,
             group: input.group ?? nil,
             note: input.note ?? nil,
-            imageData: input.imagePath.flatMap { $0.flatMap(imageData(forPath:)) }
+            imageData: input.imagePath.flatMap { $0.flatMap(imageData(forPath:)) },
+            pdfData: input.pdfPath.flatMap { $0.flatMap(pdfData(forPath:)) }
         )
         context.insert(receipt)
         try? context.save()
@@ -141,6 +143,13 @@ final class WebAPIRouter {
         if let note = input.note { receipt.note = note }
         if case let path?? = input.imagePath, path != imagePath(for: receipt), let data = imageData(forPath: path) {
             receipt.imageData = data
+        }
+        // `pdfPath`: left out keeps the PDF, null removes it (photo replaced).
+        switch input.pdfPath {
+        case .none: break
+        case .some(.none): receipt.pdfData = nil
+        case .some(.some(let path)):
+            if path != pdfPath(for: receipt), let data = pdfData(forPath: path) { receipt.pdfData = data }
         }
         receipt.updatedAt = Date()
         try? context.save()
@@ -242,8 +251,19 @@ final class WebAPIRouter {
               let part = MultipartFormData.parse(request.body, boundary: boundary).first(where: { $0.name == "image" }) else {
             return .error("No image file provided (field name: image)", status: 400)
         }
-        guard let type = part.contentType?.lowercased(), Self.allowedUploadTypes.contains(type) else {
-            return .error("Only JPEG, PNG, WEBP, or HEIC/HEIF images are allowed", status: 400)
+        guard let type = part.contentType?.lowercased(), Self.allowedUploadTypes.contains(type) || type == "application/pdf" else {
+            return .error("Only JPEG, PNG, WEBP, HEIC/HEIF images or PDFs are allowed", status: 400)
+        }
+        if type == "application/pdf" {
+            guard PDFDocument(data: part.data) != nil else { return .error("Could not read that PDF", status: 400) }
+            let name = UUID().uuidString.lowercased() + ".pdf"
+            do {
+                try FileManager.default.createDirectory(at: uploadsDirectory, withIntermediateDirectories: true)
+                try part.data.write(to: uploadsDirectory.appendingPathComponent(name))
+            } catch {
+                return .error("Upload failed", status: 500)
+            }
+            return .json(["pdfPath": "uploads/\(name)"], status: 201)
         }
         guard let jpeg = UIImage(data: part.data)?.jpegData(compressionQuality: 0.8) else {
             return .error("Could not read that image", status: 400)
@@ -259,6 +279,10 @@ final class WebAPIRouter {
     }
 
     private func image(named name: String) -> HTTPResponse {
+        if name.hasSuffix(".pdf") {
+            guard let data = pdfData(forPath: "uploads/\(name)") else { return .error("PDF not found", status: 404) }
+            return HTTPResponse(status: 200, headers: ["Content-Type": "application/pdf", "Cache-Control": "private, max-age=300"], body: data)
+        }
         guard let data = imageData(forPath: "uploads/\(name)") else { return .error("Image not found", status: 404) }
         return HTTPResponse(status: 200, headers: ["Content-Type": "image/jpeg", "Cache-Control": "private, max-age=300"], body: data)
     }
@@ -277,8 +301,10 @@ final class WebAPIRouter {
         guard !strings.isEmpty, strings.count == paths.count else {
             return .error("imagePath or a non-empty imagePaths array of strings is required", status: 400)
         }
-        guard strings.count <= Self.maxExtractImages else {
-            return .error("imagePaths cannot contain more than \(Self.maxExtractImages) images", status: 400)
+        // The selected provider's own per-request image limit.
+        let maxImages = OCRSettings.selectedProvider(defaults: defaults).maxImagesPerRequest
+        guard strings.count <= maxImages else {
+            return .error("imagePaths cannot contain more than \(maxImages) images", status: 400)
         }
         var images: [Data] = []
         for path in strings {
@@ -288,17 +314,42 @@ final class WebAPIRouter {
         do {
             let receipts = try await extract(images)
             return .json(receipts.map {
-                ["date": $0.date, "merchant": $0.merchant, "total_cost": $0.totalCost, "description": $0.description] as [String: Any]
+                ["date": $0.date, "merchant": $0.merchant, "total_cost": $0.totalCost, "description": $0.description, "pages": $0.pages] as [String: Any]
             })
         } catch {
             return .json(["error": "OCR extraction failed", "detail": error.localizedDescription], status: 502)
         }
     }
 
+    /// Same as the backend's `POST /extract/estimate`: cost and request
+    /// limits for scanning images of these sizes with the selected provider.
+    private func estimate(_ request: HTTPRequest) -> HTTPResponse {
+        guard let sizes = request.jsonObject()?["pageSizes"] as? [[String: Any]] else {
+            return .error("pageSizes must be an array of { width, height }", status: 400)
+        }
+        let pageSizes = sizes.compactMap { size -> (width: Int, height: Int)? in
+            guard let w = (size["width"] as? NSNumber)?.intValue, let h = (size["height"] as? NSNumber)?.intValue, w > 0, h > 0 else { return nil }
+            return (w, h)
+        }
+        guard pageSizes.count == sizes.count else { return .error("pageSizes must be an array of { width, height }", status: 400) }
+        let provider = OCRSettings.selectedProvider(defaults: defaults)
+        let model = OCRSettings.effectiveModel(for: provider, defaults: defaults)
+        let estimate = OCRScanCost.estimate(pageSizes: pageSizes, provider: provider, model: model)
+        return .json([
+            "inputTokens": estimate.inputTokens,
+            "outputTokens": estimate.outputTokens,
+            "usd": estimate.usd.map { $0 as Any } ?? NSNull(),
+            "provider": provider.rawValue,
+            "providerName": provider.displayName,
+            "model": model,
+            "limits": ["maxImagesPerRequest": provider.maxImagesPerRequest, "maxRequestBytes": provider.maxRequestBytes],
+        ])
+    }
+
     /// `uploads/receipt-<id>.jpg` is a saved receipt's photo; any other
     /// `uploads/<name>` is a file from `POST /upload`.
     private func imageData(forPath path: String) -> Data? {
-        guard path.hasPrefix("uploads/") else { return nil }
+        guard path.hasPrefix("uploads/"), !path.hasSuffix(".pdf") else { return nil }
         let name = String(path.dropFirst("uploads/".count))
         guard !name.isEmpty, !name.contains("/"), !name.hasPrefix(".") else { return nil }
         if name.hasPrefix(Self.receiptImagePrefix), name.hasSuffix(".jpg"),
@@ -306,6 +357,22 @@ final class WebAPIRouter {
             return receipt(withID: id)?.imageData
         }
         return try? Data(contentsOf: uploadsDirectory.appendingPathComponent(name))
+    }
+
+    /// `uploads/receipt-<id>.pdf` is a saved receipt's PDF; any other
+    /// `uploads/<name>.pdf` is a file from `POST /upload`.
+    private func pdfData(forPath path: String) -> Data? {
+        guard path.hasPrefix("uploads/"), path.hasSuffix(".pdf") else { return nil }
+        let name = String(path.dropFirst("uploads/".count))
+        guard !name.isEmpty, !name.contains("/"), !name.hasPrefix(".") else { return nil }
+        if name.hasPrefix(Self.receiptImagePrefix), let id = Int(name.dropFirst(Self.receiptImagePrefix.count).dropLast(4)) {
+            return receipt(withID: id)?.pdfData
+        }
+        return try? Data(contentsOf: uploadsDirectory.appendingPathComponent(name))
+    }
+
+    private func pdfPath(for receipt: Receipt) -> String? {
+        receipt.pdfData == nil ? nil : "uploads/\(Self.receiptImagePrefix)\(webID(for: receipt)).pdf"
     }
 
     private func imagePath(for receipt: Receipt) -> String? {
@@ -450,6 +517,7 @@ final class WebAPIRouter {
             "group": receipt.group ?? NSNull(),
             "note": receipt.note ?? NSNull(),
             "imagePath": imagePath(for: receipt) ?? NSNull(),
+            "pdfPath": pdfPath(for: receipt) ?? NSNull(),
             "createdAt": iso.string(from: receipt.createdAt),
             "updatedAt": iso.string(from: receipt.updatedAt),
         ]
@@ -479,6 +547,7 @@ private struct ReceiptInput {
     var group: String??
     var note: String??
     var imagePath: String??
+    var pdfPath: String??
 
     init(_ body: [String: Any], partial: Bool) {
         if !partial || body["date"] != nil {
@@ -502,6 +571,15 @@ private struct ReceiptInput {
         note = Self.text(body, "note")
         if let raw = body["imagePath"] {
             imagePath = .some(raw as? String)
+        }
+        if let raw = body["pdfPath"] {
+            if raw is NSNull {
+                pdfPath = .some(nil)
+            } else if let text = raw as? String, text.wholeMatch(of: /uploads\/[\w-]+\.pdf/) != nil {
+                pdfPath = .some(text)
+            } else {
+                errors.append("pdfPath must be null or an uploaded PDF path")
+            }
         }
     }
 

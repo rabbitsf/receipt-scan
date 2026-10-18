@@ -22,14 +22,16 @@ final class OpenAIVisionClientTests: XCTestCase {
         XCTAssertEqual(input.count, 1)
         XCTAssertEqual(input[0]["role"] as? String, "user")
         let content = try XCTUnwrap(input[0]["content"] as? [[String: Any]])
-        XCTAssertEqual(content.count, 2)
-        XCTAssertEqual(content[0]["type"] as? String, "input_image")
+        XCTAssertEqual(content.count, 3) // "Image 1:" label, image, prompt
+        XCTAssertEqual(content[0]["type"] as? String, "input_text")
+        XCTAssertEqual(content[0]["text"] as? String, "Image 1:")
+        XCTAssertEqual(content[1]["type"] as? String, "input_image")
         XCTAssertEqual(
-            content[0]["image_url"] as? String,
+            content[1]["image_url"] as? String,
             "data:image/jpeg;base64,\(Data("fake-image".utf8).base64EncodedString())"
         )
-        XCTAssertEqual(content[1]["type"] as? String, "input_text")
-        XCTAssertEqual(content[1]["text"] as? String, ReceiptExtraction.prompt)
+        XCTAssertEqual(content[2]["type"] as? String, "input_text")
+        XCTAssertEqual(content[2]["text"] as? String, ReceiptExtraction.prompt)
     }
 
     func testRequestBodyWithMultipleImagesIncludesOnePartPerImage() throws {
@@ -38,11 +40,12 @@ final class OpenAIVisionClientTests: XCTestCase {
 
         let input = try XCTUnwrap(body["input"] as? [[String: Any]])
         let content = try XCTUnwrap(input[0]["content"] as? [[String: Any]])
-        XCTAssertEqual(content.count, 4)
+        XCTAssertEqual(content.count, 7) // label + image per page, then the prompt
         for (index, imageData) in images.enumerated() {
-            XCTAssertEqual(content[index]["image_url"] as? String, "data:image/jpeg;base64,\(imageData.base64EncodedString())")
+            XCTAssertEqual(content[2 * index]["text"] as? String, "Image \(index + 1):")
+            XCTAssertEqual(content[2 * index + 1]["image_url"] as? String, "data:image/jpeg;base64,\(imageData.base64EncodedString())")
         }
-        XCTAssertEqual(content[3]["type"] as? String, "input_text")
+        XCTAssertEqual(content[6]["text"] as? String, ReceiptExtraction.prompt)
     }
 
     func testMakeRequestUsesBearerAuth() throws {

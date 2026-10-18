@@ -1,6 +1,7 @@
 import XCTest
 import SwiftData
 import UIKit
+import PDFKit
 @testable import ReceiptTracker
 
 @MainActor
@@ -195,7 +196,7 @@ final class WebAPIRouterTests: XCTestCase {
         XCTAssertEqual(result.status, 400)
         let traversal = await call("POST", "/api/receipts/extract", json: ["imagePath": "uploads/../../etc/passwd"])
         XCTAssertEqual(traversal.status, 404)
-        let tooMany = await call("POST", "/api/receipts/extract", json: ["imagePaths": Array(repeating: "uploads/a.jpg", count: 6)])
+        let tooMany = await call("POST", "/api/receipts/extract", json: ["imagePaths": Array(repeating: "uploads/a.jpg", count: OCRProvider.anthropic.maxImagesPerRequest + 1)])
         XCTAssertEqual(tooMany.status, 400)
     }
 
@@ -258,5 +259,56 @@ final class WebAPIRouterTests: XCTestCase {
     func testExportFilenameMatchesBackend() {
         XCTAssertEqual(WebAPIRouter.exportFilename(["year": "2026", "month": "3", "q": "x"], format: "csv"), "receipts-2026-03-search.csv")
         XCTAssertEqual(WebAPIRouter.exportFilename([:], format: "pdf"), "receipts.pdf")
+    }
+
+    // MARK: - PDF receipts
+
+    private func uploadPDF(pages: Int) async -> String {
+        let body = Data("--P\r\nContent-Disposition: form-data; name=\"image\"; filename=\"r.pdf\"\r\nContent-Type: application/pdf\r\n\r\n".utf8)
+            + TestPDF.make(pageCount: pages) + Data("\r\n--P--\r\n".utf8)
+        let result = await call("POST", "/api/receipts/upload", rawBody: body, contentType: "multipart/form-data; boundary=P")
+        XCTAssertEqual(result.status, 201)
+        return (result.body as! [String: Any])["pdfPath"] as! String
+    }
+
+    func testPDFUploadSaveServeKeepAndClear() async throws {
+        let uploaded = await uploadPDF(pages: 2)
+        XCTAssertTrue(uploaded.hasSuffix(".pdf"))
+
+        let created = await create(["date": "2026-03-04", "totalCost": 4.5, "pdfPath": uploaded])
+        let savedPath = try XCTUnwrap(created["pdfPath"] as? String)
+        XCTAssertTrue(savedPath.hasPrefix("uploads/receipt-") && savedPath.hasSuffix(".pdf"))
+        let receipt = try XCTUnwrap(context.fetch(FetchDescriptor<Receipt>()).first)
+        XCTAssertEqual(receipt.pdfData.flatMap { PDFDocument(data: $0)?.pageCount }, 2)
+
+        let served = await call("GET", "/api/receipts/images/\(savedPath.dropFirst("uploads/".count))")
+        XCTAssertEqual(served.response.headers["Content-Type"], "application/pdf")
+        XCTAssertEqual(served.response.body, receipt.pdfData)
+
+        let id = created["id"] as! Int
+        let kept = await call("PUT", "/api/receipts/\(id)", json: ["merchant": "X"])
+        XCTAssertEqual((kept.body as? [String: Any])?["pdfPath"] as? String, savedPath)
+        let cleared = await call("PUT", "/api/receipts/\(id)", json: ["pdfPath": NSNull()])
+        XCTAssertTrue((cleared.body as? [String: Any])?["pdfPath"] is NSNull)
+        XCTAssertNil(receipt.pdfData)
+
+        let bad = await call("PUT", "/api/receipts/\(id)", json: ["pdfPath": "../secret.pdf"])
+        XCTAssertEqual(bad.status, 400)
+        let pdfAsImage = await call("POST", "/api/receipts/extract", json: ["imagePath": uploaded])
+        XCTAssertEqual(pdfAsImage.status, 404, "a PDF path is never sent to the AI as an image")
+    }
+
+    func testExtractReturnsPagesAndEstimateUsesSelectedProvider() async {
+        let path = await upload()
+        let extracted = await call("POST", "/api/receipts/extract", json: ["imagePath": path])
+        XCTAssertEqual((extracted.body as? [[String: Any]])?.first?["pages"] as? [Int], [])
+
+        let estimate = await call("POST", "/api/receipts/extract/estimate", json: ["pageSizes": [["width": 1700, "height": 2200]]])
+        let body = estimate.body as! [String: Any]
+        XCTAssertEqual(body["provider"] as? String, "anthropic")
+        XCTAssertEqual((body["limits"] as? [String: Any])?["maxRequestBytes"] as? Int, 32 * 1024 * 1024)
+        XCTAssertGreaterThan(body["usd"] as? Double ?? 0, 0)
+        let bad = await call("POST", "/api/receipts/extract/estimate", json: ["pageSizes": [["width": 0]]])
+        XCTAssertEqual(bad.status, 400)
     }
 }

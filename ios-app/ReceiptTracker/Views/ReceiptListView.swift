@@ -215,7 +215,7 @@ struct ReceiptListView: View {
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
-                        if receipt.imageData != nil {
+                        if receipt.imageData != nil || receipt.pdfData != nil {
                             Button {
                                 viewingReceipt = receipt
                             } label: {
@@ -404,13 +404,16 @@ struct ReceiptListView: View {
                 ActivityShareSheet(items: [exported.url])
             }
             .fullScreenCover(item: $viewingReceipt) { receipt in
-                if let imageData = receipt.imageData {
+                if receipt.imageData != nil || receipt.pdfData != nil {
                     ReceiptImageView(
-                        imageData: imageData,
-                        uploadFilename: DriveUploadFilename.make(
+                        imageData: receipt.imageData,
+                        pdfData: receipt.pdfData,
+                        driveItem: DriveUploadItem.forReceipt(
                             date: receipt.date,
                             merchant: receipt.merchant,
-                            fallbackID: String(receipt.persistentModelID.hashValue)
+                            fallbackID: String(receipt.persistentModelID.hashValue),
+                            imageData: receipt.imageData,
+                            pdfData: receipt.pdfData
                         )
                     )
                 }
@@ -508,16 +511,16 @@ struct ReceiptListView: View {
         let items: [DriveUploadItem] = filteredReceipts
             .filter { selection.contains($0.persistentModelID) }
             .compactMap { receipt in
-                guard let imageData = receipt.imageData else { return nil }
-                let filename = DriveUploadFilename.make(
+                DriveUploadItem.forReceipt(
                     date: receipt.date,
                     merchant: receipt.merchant,
-                    fallbackID: String(receipt.persistentModelID.hashValue)
+                    fallbackID: String(receipt.persistentModelID.hashValue),
+                    imageData: receipt.imageData,
+                    pdfData: receipt.pdfData
                 )
-                return DriveUploadItem(filename: filename, imageData: imageData)
             }
         guard !items.isEmpty else {
-            driveUploadSummary = "None of the selected receipts have a photo to upload."
+            driveUploadSummary = "None of the selected receipts have a photo or PDF to upload."
             return
         }
 

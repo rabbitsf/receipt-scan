@@ -8,7 +8,7 @@ final class AnthropicVisionClientTests: XCTestCase {
         let body = AnthropicVisionClient.requestBody(images: [Data("fake-image".utf8)], mediaType: "image/jpeg", model: "claude-opus-4-8")
 
         XCTAssertEqual(body["model"] as? String, "claude-opus-4-8")
-        XCTAssertEqual(body["max_tokens"] as? Int, 4096)
+        XCTAssertEqual(body["max_tokens"] as? Int, ReceiptExtraction.maxOutputTokens)
 
         let outputConfig = try XCTUnwrap(body["output_config"] as? [String: Any])
         let format = try XCTUnwrap(outputConfig["format"] as? [String: Any])
@@ -23,7 +23,7 @@ final class AnthropicVisionClientTests: XCTestCase {
         let itemSchema = try XCTUnwrap(receiptsArraySchema["items"] as? [String: Any])
         XCTAssertEqual(
             (itemSchema["required"] as? [String]).map(Set.init),
-            Set(["date", "merchant", "total_cost", "description"])
+            Set(["date", "merchant", "total_cost", "description", "pages"])
         )
         XCTAssertEqual(itemSchema["additionalProperties"] as? Bool, false)
 
@@ -31,13 +31,14 @@ final class AnthropicVisionClientTests: XCTestCase {
         XCTAssertEqual(messages.count, 1)
         XCTAssertEqual(messages[0]["role"] as? String, "user")
         let content = try XCTUnwrap(messages[0]["content"] as? [[String: Any]])
-        XCTAssertEqual(content.count, 2)
-        XCTAssertEqual(content[0]["type"] as? String, "image")
-        let source = try XCTUnwrap(content[0]["source"] as? [String: Any])
+        XCTAssertEqual(content.count, 3) // "Image 1:" label, image, prompt
+        XCTAssertEqual(content[0]["text"] as? String, "Image 1:")
+        XCTAssertEqual(content[1]["type"] as? String, "image")
+        let source = try XCTUnwrap(content[1]["source"] as? [String: Any])
         XCTAssertEqual(source["media_type"] as? String, "image/jpeg")
         XCTAssertEqual(source["data"] as? String, Data("fake-image".utf8).base64EncodedString())
-        XCTAssertEqual(content[1]["type"] as? String, "text")
-        XCTAssertFalse((content[1]["text"] as? String ?? "").isEmpty)
+        XCTAssertEqual(content[2]["type"] as? String, "text")
+        XCTAssertEqual(content[2]["text"] as? String, ReceiptExtraction.prompt)
     }
 
     /// Multi-page PDF import sends every rendered page as its own image
@@ -49,14 +50,15 @@ final class AnthropicVisionClientTests: XCTestCase {
 
         let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
         let content = try XCTUnwrap(messages[0]["content"] as? [[String: Any]])
-        XCTAssertEqual(content.count, 4)
+        XCTAssertEqual(content.count, 7) // label + image per page, then the prompt
 
         for (index, imageData) in images.enumerated() {
-            XCTAssertEqual(content[index]["type"] as? String, "image")
-            let source = try XCTUnwrap(content[index]["source"] as? [String: Any])
+            XCTAssertEqual(content[2 * index]["text"] as? String, "Image \(index + 1):")
+            XCTAssertEqual(content[2 * index + 1]["type"] as? String, "image")
+            let source = try XCTUnwrap(content[2 * index + 1]["source"] as? [String: Any])
             XCTAssertEqual(source["data"] as? String, imageData.base64EncodedString())
         }
-        XCTAssertEqual(content[3]["type"] as? String, "text")
+        XCTAssertEqual(content[6]["text"] as? String, ReceiptExtraction.prompt)
     }
 
     // MARK: - Response parsing

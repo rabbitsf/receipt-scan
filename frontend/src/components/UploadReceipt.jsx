@@ -1,44 +1,31 @@
 import { useState } from 'react';
 import ReceiptForm from './ReceiptForm.jsx';
+import ScanCostDialog from './ScanCostDialog.jsx';
 import { uploadReceiptImage, extractReceiptFields, createReceipt } from '../api.js';
 import { emptyReceiptValues as emptyValues, toFormValues } from '../receiptFields.js';
-import { renderPdfPages, MAX_PAGES } from '../pdfPageRenderer.js';
+import { costSummary, scanFiles } from '../pdfImport.js';
+
+// A review entry: { values, imagePath, pdfPath, sourceLabel, notices }.
+const blankEntry = { values: emptyValues, imagePath: null, pdfPath: null, sourceLabel: null, notices: [] };
 
 export default function UploadReceipt({ onDone }) {
   const [status, setStatus] = useState('idle'); // idle | uploading | extracting | review | saved
-  const [imagePath, setImagePath] = useState(null);
-  const [queue, setQueue] = useState([emptyValues]);
+  const [queue, setQueue] = useState([blankEntry]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [savedCount, setSavedCount] = useState(0);
   const [notice, setNotice] = useState(null);
+  const [progress, setProgress] = useState(null);
+  const [pendingPdfs, setPendingPdfs] = useState(null); // { files, summary } while the cost popup is open
 
-  // Shared by both the single-photo and PDF-import paths once their
-  // image(s) are uploaded — `uploadedPaths` may contain more than one path
-  // (a multi-page PDF); only the first becomes the receipt's stored/shown
-  // photo, mirroring iOS (this app has no concept of multiple photos per
-  // receipt).
-  async function runExtraction(uploadedPaths) {
-    setImagePath(uploadedPaths[0]);
-    setStatus('extracting');
-    try {
-      const extracted = await extractReceiptFields(uploadedPaths);
-      if (extracted.length === 0) {
-        setNotice('No receipts were detected. You can still enter the details manually below.');
-        setQueue([emptyValues]);
-      } else {
-        setQueue(extracted.map(toFormValues));
-      }
-    } catch (extractErr) {
-      setNotice(
-        `Automatic scanning failed (${extractErr.message}). You can still enter the details manually below.`,
-      );
-      setQueue([emptyValues]);
-    }
+  function startReview(entries, message = null) {
+    setQueue(entries.length ? entries : [blankEntry]);
+    setNotice(message);
     setCurrentIndex(0);
     setSavedCount(0);
     setStatus('review');
   }
 
+  // A photo: every receipt found in it shares that photo.
   async function handleFileSelected(e) {
     const file = e.target.files[0];
     e.target.value = '';
@@ -46,45 +33,54 @@ export default function UploadReceipt({ onDone }) {
 
     setNotice(null);
     setStatus('uploading');
+    let imagePath;
     try {
-      const { imagePath: uploadedPath } = await uploadReceiptImage(file);
-      await runExtraction([uploadedPath]);
+      ({ imagePath } = await uploadReceiptImage(file));
     } catch (uploadErr) {
       setNotice(uploadErr.message);
       setStatus('idle');
+      return;
+    }
+    setStatus('extracting');
+    try {
+      const extracted = await extractReceiptFields([imagePath]);
+      if (extracted.length === 0) {
+        startReview([{ ...blankEntry, imagePath }], 'No receipts were detected. You can still enter the details manually below.');
+      } else {
+        startReview(extracted.map((r) => ({ ...blankEntry, values: toFormValues(r), imagePath })));
+      }
+    } catch (extractErr) {
+      startReview(
+        [{ ...blankEntry, imagePath }],
+        `Automatic scanning failed (${extractErr.message}). You can still enter the details manually below.`,
+      );
     }
   }
 
-  async function handlePdfSelected(e) {
-    const file = e.target.files[0];
+  // PDFs: show page counts and estimated cost first; the user chooses.
+  async function handlePdfsSelected(e) {
+    const files = Array.from(e.target.files);
     e.target.value = '';
-    if (!file) return;
-
-    const confirmed = window.confirm(
-      `Up to ${MAX_PAGES} pages will be scanned together as one import. If they contain more than one receipt, you'll review each one before saving.`,
-    );
-    if (!confirmed) return;
-
+    if (!files.length) return;
     setNotice(null);
     setStatus('uploading');
     try {
-      const pageBlobs = await renderPdfPages(file);
-      if (pageBlobs.length === 0) {
-        setNotice("Couldn't read that PDF — please try a different file, or enter the receipt manually.");
-        setStatus('idle');
-        return;
-      }
-      const uploadedPaths = [];
-      for (const [index, blob] of pageBlobs.entries()) {
-        const pageFile = new File([blob], `page-${index + 1}.jpg`, { type: 'image/jpeg' });
-        const { imagePath: uploadedPath } = await uploadReceiptImage(pageFile);
-        uploadedPaths.push(uploadedPath);
-      }
-      await runExtraction(uploadedPaths);
-    } catch (uploadErr) {
-      setNotice(uploadErr.message);
-      setStatus('idle');
+      setPendingPdfs({ files, summary: await costSummary(files) });
+    } catch (err) {
+      setNotice(err.message);
     }
+    setStatus('idle');
+  }
+
+  async function runPdfScan(quickScan) {
+    const { files, summary } = pendingPdfs;
+    setPendingPdfs(null);
+    setStatus('extracting');
+    const entries = await scanFiles(files, { quickScan, limits: summary.limits }, (n, count) =>
+      setProgress(count > 1 ? `Scanning file ${n} of ${count}…` : null),
+    );
+    setProgress(null);
+    startReview(entries);
   }
 
   async function handleSave(values) {
@@ -101,8 +97,7 @@ export default function UploadReceipt({ onDone }) {
 
   function handleReset() {
     setStatus('idle');
-    setImagePath(null);
-    setQueue([emptyValues]);
+    setQueue([blankEntry]);
     setCurrentIndex(0);
     setSavedCount(0);
     setNotice(null);
@@ -110,6 +105,7 @@ export default function UploadReceipt({ onDone }) {
 
   const isMultiple = queue.length > 1;
   const isLastInQueue = currentIndex + 1 >= queue.length;
+  const entry = queue[currentIndex];
 
   return (
     <div className="upload-receipt">
@@ -131,28 +127,39 @@ export default function UploadReceipt({ onDone }) {
             />
           </label>
           <label className="file-input">
-            Import a PDF
-            <input type="file" accept="application/pdf" onChange={handlePdfSelected} />
+            Import PDFs (you can pick several)
+            <input type="file" accept="application/pdf" multiple onChange={handlePdfsSelected} />
           </label>
           {notice && <p className="form-error">{notice}</p>}
         </>
       )}
 
-      {status === 'uploading' && <p>Uploading…</p>}
-      {status === 'extracting' && <p>Scanning receipt…</p>}
+      {status === 'uploading' && <p>Reading files…</p>}
+      {status === 'extracting' && <p>{progress ?? 'Scanning receipt…'}</p>}
+
+      {pendingPdfs && (
+        <ScanCostDialog summary={pendingPdfs.summary} onChoose={runPdfScan} onCancel={() => setPendingPdfs(null)} />
+      )}
 
       {status === 'review' && (
         <>
           {notice && <p className="form-warning">{notice}</p>}
           {isMultiple && (
             <p className="status-message">
-              Found {queue.length} receipts in this photo — reviewing receipt {currentIndex + 1} of {queue.length}
+              Found {queue.length} receipts — reviewing receipt {currentIndex + 1} of {queue.length}
             </p>
           )}
+          {entry.sourceLabel && <p className="settings-section-hint">{entry.sourceLabel}</p>}
+          {entry.notices.map((n) => (
+            <p key={n} className="form-warning">
+              {n}
+            </p>
+          ))}
           <ReceiptForm
             key={currentIndex}
-            initialValues={queue[currentIndex]}
-            imagePath={imagePath}
+            initialValues={entry.values}
+            imagePath={entry.imagePath}
+            pdfPath={entry.pdfPath}
             submitLabel={isLastInQueue ? 'Save Receipt' : 'Save & Review Next'}
             onSubmit={handleSave}
             onCancel={handleReset}

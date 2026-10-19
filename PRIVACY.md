@@ -1,8 +1,8 @@
-# Receipt Tracker — Privacy Policy
+# ReceiptDrive — Privacy Policy
 
 **Effective date:** October 18, 2026
 
-Receipt Tracker ("the app") is made by Lai Kong Fung ("we"). This policy explains what happens to your information when you use the iPhone app. In short: **we don't run any servers, we don't collect your data, and your receipts stay on your iPhone** unless you choose to send them somewhere.
+ReceiptDrive ("the app") is made by Lai Kong Fung ("we"). This policy explains what happens to your information when you use the iPhone app. In short: **we don't run any servers, we don't collect your data, and your receipts stay on your iPhone** unless you choose to send them somewhere.
 
 ## What the app stores, and where
 
@@ -37,7 +37,7 @@ If you don't add an API key or don't allow sending, nothing is sent; you can sti
 
 ### 2. Google Drive upload (optional)
 
-If you connect Google Drive in Settings, the app uploads a receipt's photo or PDF **only when you tap "Upload to Drive"**. It uses Google's narrowest Drive permission, which lets the app see only the files it creates (in a "Receipt Tracker" folder). You can disconnect anytime in Settings. Google's handling of these files is covered by the [Google privacy policy](https://policies.google.com/privacy).
+If you connect Google Drive in Settings, the app uploads a receipt's photo or PDF **only when you tap "Upload to Drive"**. It uses Google's narrowest Drive permission, which lets the app see only the files it creates (in a "ReceiptDrive" folder). You can disconnect anytime in Settings. Google's handling of these files is covered by the [Google privacy policy](https://policies.google.com/privacy).
 
 ### 3. Web Access over Wi-Fi (optional)
 

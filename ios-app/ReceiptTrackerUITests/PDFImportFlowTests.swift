@@ -58,14 +58,16 @@ final class PDFImportFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["pdfBadge"].label.contains("7 pages"))
 
         // Fill in the first entry by hand and move to the second file's entry.
-        let merchant = app.textFields["merchantField"]
+        let merchant = app.textFields["merchantField"].scrolledIntoView(in: app)
         merchant.tap()
         merchant.typeText("PDF One")
-        let total = app.textFields["totalCostField"]
+        let total = app.textFields["totalCostField"].scrolledIntoView(in: app)
         total.tap()
         total.typeText("1")
         app.buttons["saveReceiptButton"].tap()
 
+        Thread.sleep(forTimeInterval: 1)
+        app.staticTexts["sourceLabelText"].scrolledIntoView(in: app, up: false)
         XCTAssertTrue(app.staticTexts["sourceLabelText"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.staticTexts["sourceLabelText"].label, "From b-short.pdf")
         // Typing scrolled the form; the badge row is at the top (off-screen rows aren't in the hierarchy).

@@ -17,3 +17,19 @@ extension XCUIApplication {
         return app
     }
 }
+
+extension XCUIElement {
+    /// Swipes `container` until this element is on screen. Forms and lists
+    /// only expose rows that are visible — and which rows fit differs
+    /// between iPhone and the iPad's smaller sheets.
+    @discardableResult
+    func scrolledIntoView(in container: XCUIApplication, up: Bool = true, maxSwipes: Int = 10) -> XCUIElement {
+        var swipes = 0
+        while !(exists && isHittable) && swipes < maxSwipes {
+            // Slow, so a short iPad sheet doesn't fling past the element.
+            up ? container.swipeUp(velocity: .slow) : container.swipeDown(velocity: .slow)
+            swipes += 1
+        }
+        return self
+    }
+}

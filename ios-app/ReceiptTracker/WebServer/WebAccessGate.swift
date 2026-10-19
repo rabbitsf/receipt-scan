@@ -63,7 +63,7 @@ struct WebAccessGate {
         <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Receipt Tracker</title>
+        <title>ReceiptDrive</title>
         <style>
           :root { color-scheme: light dark; --bg: #f5f5f7; --card: #fff; --text: #1d1d1f; --muted: #6e6e73; --accent: #0a84ff; --err: #d70015; }
           @media (prefers-color-scheme: dark) { :root { --bg: #000; --card: #1c1c1e; --text: #f5f5f7; --muted: #98989d; --err: #ff6961; } }
@@ -81,7 +81,7 @@ struct WebAccessGate {
         </head>
         <body>
         <form method="post" action="/login">
-          <h1>Receipt Tracker</h1>
+          <h1>ReceiptDrive</h1>
           <p>Enter the 4-digit code shown on your iPhone in Settings → Web Access over Wi-Fi.</p>
           <input name="code" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" autofocus required aria-label="Access code">
           <button type="submit">Open</button>

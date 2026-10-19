@@ -23,6 +23,14 @@ struct ReceiptTrackerApp: App {
     }
 
     private static func makeContainer() -> ModelContainer {
+        // App Store screenshots only (`AppStoreScreenshotTests`): made-up
+        // receipts in a throwaway in-memory store.
+        if ProcessInfo.processInfo.environment["UITEST_DEMO_DATA"] != nil {
+            if let dir = ProcessInfo.processInfo.environment["UITEST_PDF_IMPORT_DIR"] {
+                try? DemoData.writeImportPDFs(to: URL(fileURLWithPath: dir))
+            }
+            return DemoData.makeContainer()
+        }
         let container = try! ModelContainer(for: Receipt.self, CustomCategory.self, CustomGroup.self)
 
         // Seeds one receipt with a real (tiny, generated) photo attached,

@@ -17,7 +17,7 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Receipt Tracker</h1>
+        <h1>ReceiptDrive</h1>
         <p className="app-tagline">Keep every receipt straight for tax time.</p>
       </header>
 

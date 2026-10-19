@@ -30,11 +30,21 @@ targets:
       path: ReceiptTracker/Info.plist
       properties:
         UILaunchScreen: {}
+        # Name under the home-screen icon (App Store name is set in App Store Connect).
+        CFBundleDisplayName: ReceiptDrive
         # Only standard HTTPS — skips the export-compliance question on upload.
         ITSAppUsesNonExemptEncryption: false
-        NSCameraUsageDescription: "Receipt Tracker uses the camera to photograph receipts so their details can be scanned automatically."
-        NSLocalNetworkUsageDescription: "Receipt Tracker uses your local network so a computer on the same Wi-Fi can open the receipt web app when Web Access is turned on."
-        NSPhotoLibraryAddUsageDescription: "Receipt Tracker can save a receipt photo to your Photos library when you choose Save to Photos."
+        # iPhone: portrait. iPad: every orientation (required for iPad multitasking).
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSCameraUsageDescription: "ReceiptDrive uses the camera to photograph receipts so their details can be scanned automatically."
+        NSLocalNetworkUsageDescription: "ReceiptDrive uses your local network so a computer on the same Wi-Fi can open the receipt web app when Web Access is turned on."
+        NSPhotoLibraryAddUsageDescription: "ReceiptDrive can save a receipt photo to your Photos library when you choose Save to Photos."
         # TODO(setup): replace with the real iOS OAuth Client ID from Google
         # Cloud Console (APIs & Services > Credentials > Create Credentials >
         # OAuth client ID > iOS, bundle ID com.webreceipt.ReceiptTracker).
@@ -50,7 +60,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.webreceipt.ReceiptTracker
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         GENERATE_INFOPLIST_FILE: true

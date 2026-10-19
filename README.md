@@ -1,4 +1,4 @@
-# Receipt Tracker
+# ReceiptDrive
 
 A web app for keeping every receipt straight for tax time. Attach a photo and
 let Claude Vision extract the date, merchant, total, and description automatically,

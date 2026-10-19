@@ -245,7 +245,7 @@ struct ReceiptListView: View {
                 receiptListContent
             }
             .background(Color(.systemGroupedBackground))
-            .navigationTitle(isSelecting && !selection.isEmpty ? "\(selection.count) Selected" : "Receipt Tracker")
+            .navigationTitle(isSelecting && !selection.isEmpty ? "\(selection.count) Selected" : "ReceiptDrive")
             .searchable(text: $searchText, prompt: "Merchant, description, or amount")
             .toolbar {
                 ToolbarItem(placement: .navigation) {

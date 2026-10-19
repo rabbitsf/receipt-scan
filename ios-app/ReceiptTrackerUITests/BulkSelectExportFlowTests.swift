@@ -154,7 +154,7 @@ final class BulkSelectExportFlowTests: XCTestCase {
         selectAllButton.tap()
 
         XCTAssertFalse(app.navigationBars["2 Selected"].exists)
-        XCTAssertTrue(app.navigationBars["Receipt Tracker"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["ReceiptDrive"].waitForExistence(timeout: 5))
         XCTAssertEqual(selectAllButton.label, "Select All")
     }
 

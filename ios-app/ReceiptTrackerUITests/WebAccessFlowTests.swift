@@ -21,11 +21,7 @@ final class WebAccessFlowTests: XCTestCase {
             settingsButton.tap()
 
             let toggle = app.switches["webAccessToggle"]
-            var swipes = 0
-            while !(toggle.exists && toggle.isHittable) && swipes < 6 {
-                app.swipeUp()
-                swipes += 1
-            }
+            toggle.scrolledIntoView(in: app)
             XCTAssertTrue(toggle.isHittable)
             // Tap the switch itself (right edge); the row's middle is its label.
             toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
@@ -33,7 +29,7 @@ final class WebAccessFlowTests: XCTestCase {
             let codeLabel = app.staticTexts["webAccessCode"]
             // The code row appears below the switch; rows off-screen aren't in
             // the hierarchy, so scroll it into view.
-            if !codeLabel.waitForExistence(timeout: 3) { app.swipeUp() }
+            if !codeLabel.waitForExistence(timeout: 3) { codeLabel.scrolledIntoView(in: app) }
             XCTAssertTrue(codeLabel.waitForExistence(timeout: 5))
             XCTAssertTrue(app.staticTexts["webAccessAddress"].exists)
             // Read the digits from the label (it may also carry the row title).
@@ -66,7 +62,7 @@ final class WebAccessFlowTests: XCTestCase {
 
         await MainActor.run {
             let toggle = app.switches["webAccessToggle"]
-            if !toggle.isHittable { app.swipeDown() }
+            toggle.scrolledIntoView(in: app, up: false, maxSwipes: 4)
             toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
             XCTAssertFalse(app.staticTexts["webAccessCode"].waitForExistence(timeout: 2))
         }

@@ -53,7 +53,8 @@ struct DashboardView: View {
                     statRow(label: "\(summary.priorYear) total", value: summary.priorYearTotal)
                         .listRowBackground(Theme.summaryCardBackground)
                     HStack {
-                        Text("Change vs \(summary.priorYear)")
+                        // String(...) — a number inside Text("…") gets locale grouping ("2,025").
+                        Text("Change vs \(String(summary.priorYear))")
                         Spacer()
                         Text("\(change >= 0 ? "▲" : "▼") \(abs(change), format: .currency(code: "USD"))")
                             .foregroundStyle(change >= 0 ? .green : .red)

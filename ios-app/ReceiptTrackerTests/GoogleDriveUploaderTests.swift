@@ -44,7 +44,7 @@ final class GoogleDriveUploaderTests: XCTestCase {
 
     func testParseFolderSearchResponseReturnsIDWhenFolderFound() throws {
         let response = try makeHTTPResponse(status: 200)
-        let data = Data(#"{"files":[{"id":"folder123","name":"Receipt Tracker"}]}"#.utf8)
+        let data = Data(#"{"files":[{"id":"folder123","name":"ReceiptDrive"}]}"#.utf8)
 
         let id = try GoogleDriveUploader.parseFolderSearchResponse(from: data, response: response)
         XCTAssertEqual(id, "folder123")
@@ -74,7 +74,7 @@ final class GoogleDriveUploaderTests: XCTestCase {
 
     func testParseCreateFolderResponseReturnsID() throws {
         let response = try makeHTTPResponse(status: 200)
-        let data = Data(#"{"id":"newFolder456","name":"Receipt Tracker"}"#.utf8)
+        let data = Data(#"{"id":"newFolder456","name":"ReceiptDrive"}"#.utf8)
 
         let id = try GoogleDriveUploader.parseCreateFolderResponse(from: data, response: response)
         XCTAssertEqual(id, "newFolder456")

@@ -48,6 +48,13 @@ struct ActivityShareSheet: UIViewControllerRepresentable {
             guard !hasPresented else { return }
             hasPresented = true
             let activityController = UIActivityViewController(activityItems: items, applicationActivities: nil)
+            // iPad shows the share sheet as a popover, which must have an
+            // anchor or UIKit raises an exception. Center it, no arrow.
+            if let popover = activityController.popoverPresentationController {
+                popover.sourceView = view
+                popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+                popover.permittedArrowDirections = []
+            }
             present(activityController, animated: true)
         }
     }

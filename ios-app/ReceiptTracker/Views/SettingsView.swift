@@ -137,7 +137,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Google Drive")
                 } footer: {
-                    Text("Connect once here to upload receipt photos to a \"Receipt Tracker\" folder in your Google Drive — from a receipt's photo view, or for multiple receipts at once via Select.")
+                    Text("Connect once here to upload receipt photos to a \"ReceiptDrive\" folder in your Google Drive — from a receipt's photo view, or for multiple receipts at once via Select.")
                 }
 
                 Section {

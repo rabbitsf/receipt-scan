@@ -59,7 +59,7 @@ struct DriveBulkUploadResult {
     }
 }
 
-/// Uploads receipt photos to a dedicated "Receipt Tracker" folder in the
+/// Uploads receipt photos to a dedicated "ReceiptDrive" folder in the
 /// user's Google Drive, created on first use (see `ensureFolder`). All
 /// Drive REST calls are plain `URLSession` requests — no additional Drive
 /// SDK beyond `GoogleSignIn-iOS` (which `GoogleDriveAuth` wraps for the
@@ -67,7 +67,7 @@ struct DriveBulkUploadResult {
 enum GoogleDriveUploader {
     static let filesEndpoint = URL(string: "https://www.googleapis.com/drive/v3/files")!
     static let uploadEndpoint = URL(string: "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")!
-    static let folderName = "Receipt Tracker"
+    static let folderName = "ReceiptDrive"
     static let folderMimeType = "application/vnd.google-apps.folder"
 
     /// Not a secret — just remembers which Drive folder to upload into, so
@@ -123,7 +123,7 @@ enum GoogleDriveUploader {
     }
 
     /// Returns the app's Drive folder ID: the cached one if present,
-    /// otherwise a Drive search for an existing "Receipt Tracker" folder
+    /// otherwise a Drive search for an existing "ReceiptDrive" folder
     /// (covers a reinstall or a cleared cache finding a folder from a
     /// previous session), only creating a new one if neither is found.
     static func ensureFolder(accessToken: String, session: URLSession = .shared) async throws -> String {

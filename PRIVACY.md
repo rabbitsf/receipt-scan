@@ -1,24 +1,24 @@
 # ReceiptDrive — Privacy Policy
 
-**Effective date:** October 18, 2026
+**Effective date:** October 21, 2026
 
-ReceiptDrive ("the app") is made by Lai Kong Fung ("we"). This policy explains what happens to your information when you use the iPhone app. In short: **we don't run any servers, we don't collect your data, and your receipts stay on your iPhone** unless you choose to send them somewhere.
+ReceiptDrive ("the app") is made by Lai Kong Fung ("we"). This policy explains what happens to your information when you use the app on iPhone or iPad. In short: **we don't run any servers, we don't collect your data, and your receipts stay on your device** unless you choose to send them somewhere.
 
 ## What the app stores, and where
 
-Everything you enter stays **on your iPhone**, in the app's own storage:
+Everything you enter stays **on your iPhone or iPad**, in the app's own storage:
 
 - receipts (date, merchant, amount, description, category, group, note)
 - receipt photos and PDF pages
 - your categories, groups and settings
 
-API keys you enter for AI scanning are kept in the **iOS Keychain** on your iPhone.
+API keys you enter for AI scanning are kept in the **iOS Keychain** on your device.
 
 We have no account system, no analytics, no advertising and no tracking. We never receive, see or sell your data.
 
-## When information leaves your iPhone
+## When information leaves your device
 
-Information only leaves your iPhone when **you** use one of these features:
+Information only leaves your device when **you** use one of these features:
 
 ### 1. AI receipt scanning (optional)
 
@@ -29,7 +29,7 @@ To fill in receipt details automatically, the app can send the **receipt photo o
 - **Google** (Gemini) — [privacy policy](https://policies.google.com/privacy)
 
 - The app **asks your permission** before anything is sent to a provider, and you can turn this off anytime in Settings → Receipt Scanning ("Allow sending receipts to …").
-- Images are sent **directly from your iPhone to the provider** using **your own API key**, over an encrypted connection. They do not pass through us.
+- Images are sent **directly from your device to the provider** using **your own API key**, over an encrypted connection. They do not pass through us.
 - They are sent only when you scan a receipt, and only to read its date, merchant, total and items.
 - How long a provider keeps the data is governed by **your agreement with that provider** and its privacy policy linked above.
 
@@ -37,7 +37,16 @@ If you don't add an API key or don't allow sending, nothing is sent; you can sti
 
 ### 2. Google Drive upload (optional)
 
-If you connect Google Drive in Settings, the app uploads a receipt's photo or PDF **only when you tap "Upload to Drive"**. It uses Google's narrowest Drive permission, which lets the app see only the files it creates (in a "ReceiptDrive" folder). You can disconnect anytime in Settings. Google's handling of these files is covered by the [Google privacy policy](https://policies.google.com/privacy).
+Google Drive is optional. The app asks to sign in to Google only if you tap "Connect to Google Drive" in Settings.
+
+- **What the app requests:** the `drive.file` permission (Google's narrowest Drive permission) and your basic Google profile.
+- **How it is used:** when you tap "Upload to Drive", the app creates a "ReceiptDrive" folder in your Drive (the first time) and uploads that receipt's photo or PDF into it. With `drive.file`, the app can only see and change files it created itself. It cannot read, list or change any of your other Drive files.
+- **Your email address** is shown in Settings so you know which account is connected. It is not sent anywhere else.
+- **Nothing is uploaded automatically.** Files go to Drive only when you tap "Upload to Drive".
+- Your Google sign-in is stored on your device. We have no server, so Google user data is never sent to us, stored by us, shared, sold, or used for advertising or AI training.
+- You can disconnect anytime in Settings, or remove the app's access at [myaccount.google.com/permissions](https://myaccount.google.com/permissions).
+
+ReceiptDrive's use and transfer of information received from Google APIs will adhere to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements. Google's handling of your files is covered by the [Google privacy policy](https://policies.google.com/privacy).
 
 ### 3. Web Access over Wi-Fi (optional)
 
@@ -55,8 +64,8 @@ When you export (CSV, PDF), share a receipt PDF, or save a photo to your Photos 
 
 ## Deleting your data
 
-- Delete a receipt in the app to remove it from your iPhone.
-- Deleting the app removes all of its data from your iPhone.
+- Delete a receipt in the app to remove it from your device.
+- Deleting the app removes all of its data from your device.
 - Remove an API key or turn off AI sending in Settings → Receipt Scanning.
 - Data you sent to an AI provider or to Google Drive is held by that service; manage or delete it with them.
 
